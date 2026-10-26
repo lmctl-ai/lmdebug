@@ -1,0 +1,131 @@
+Sent TLS Record
+Header:
+  Version = TLS 1.0 (0x301)
+  Content Type = Handshake (22)
+  Length = 91
+    ClientHello, Length=87
+      client_version=0x303 (TLS 1.2)
+      cipher_suites (len=2)
+        {0x13, 0x01} TLS_AES_128_GCM_SHA256
+      extensions, length = 44
+        extension_type=server_name(0), length=18
+          edge.lmctl.ai
+        extension_type=application_layer_protocol_negotiation(16), length=11
+          http/1.1
+        extension_type=supported_versions(43), length=3
+          TLS 1.3 (772)
+
+Received TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = Handshake (22)
+  Length = 65
+    ServerHello, Length=61
+      server_version=0x303 (TLS 1.2)
+      cipher_suite {0x13, 0x01} TLS_AES_128_GCM_SHA256
+      extensions, length = 21
+        extension_type=supported_versions(43), length=2
+          TLS 1.3 (772)
+        extension_type=application_layer_protocol_negotiation(16), length=11
+          http/1.1
+
+Received TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = ChangeCipherSpec (20)
+  Length = 1
+    change_cipher_spec (1)
+
+Received TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = ApplicationData (23)
+  Length = 38
+  Inner Content Type = Handshake (22)
+    EncryptedExtensions, Length=17
+      extensions, length = 15
+        extension_type=application_layer_protocol_negotiation(16), length=11
+          http/1.1
+
+Received TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = ApplicationData (23)
+  Length = 421
+  Inner Content Type = Handshake (22)
+    Certificate, Length=400
+      context (len=0):
+      certificate_list, length=396
+-----BEGIN CERTIFICATE-----
+MIIBmjCCAUGgAwIBAgICA+kwCgYIKoZIzj0EAwIwJjEkMCIGA1UEAwwbbG1kZWJ1
+ZyBDb3JyZWxhdGlvbiBSb290IENBMB4XDTI2MDEwMTAwMDAwMFoXDTM2MDEwMTAw
+MDAwMFowGDEWMBQGA1UEAwwNZWRnZS5sbWN0bC5haTBZMBMGByqGSM49AgEGCCqG
+SM49AwEHA0IABHeFUaVgKf4SmhkEUHKD0QSfP2lFQa1tok6QFdqTBJpzLz4jDuBP
+6D2cLFJ8ZmaIvTyZQXDHKpXBeFXOyxtkwhKjbTBrMB4GA1UdEQQXMBWCDWVkZ2Uu
+bG1jdGwuYWmHBMYzZCowHQYDVR0OBBYEFI8t+koR0zW2ME5yGoQhir97FeCTMAkG
+A1UdEwQCMAAwHwYDVR0jBBgwFoAUvnnPX+cA5yQ6MIsXZYGX5GZp+SkwCgYIKoZI
+zj0EAwIDRwAwRAIgSFxjMgFuPMAMjVYSnPB1ni6e/C0/20eIWx82Enw51GcCIB8B
+y68zw3XSKaUrpDA2ekYbYrrwm6UlUSuVIsQuc8AQ
+-----END CERTIFICATE-----
+
+Received TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = ApplicationData (23)
+  Length = 97
+  Inner Content Type = Handshake (22)
+    CertificateVerify, Length=76
+      Signature Algorithm: ecdsa_secp256r1_sha256 (0x0403)
+
+Received TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = ApplicationData (23)
+  Length = 53
+  Inner Content Type = Handshake (22)
+    Finished, Length=32
+
+Sent TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = ChangeCipherSpec (20)
+  Length = 1
+    change_cipher_spec (1)
+
+Sent TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = ApplicationData (23)
+  Length = 53
+  Inner Content Type = Handshake (22)
+    Finished, Length=32
+
+Sent TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = ApplicationData (23)
+  Length = 95
+  Inner Content Type = ApplicationData (23)
+
+Received TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = ApplicationData (23)
+  Length = 180
+  Inner Content Type = Handshake (22)
+    NewSessionTicket, Length=159
+
+Received TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = ApplicationData (23)
+  Length = 190
+  Inner Content Type = ApplicationData (23)
+
+Sent TLS Record
+Header:
+  Version = TLS 1.2 (0x303)
+  Content Type = ApplicationData (23)
+  Length = 19
+  Inner Content Type = Alert (21)
+    Level=warning(1), description=close notify(0)

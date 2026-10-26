@@ -156,6 +156,25 @@ lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/p
 lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/live/interface_inventory.lms
 ```
 
+## Cross-Tool Correlation & Segment Timing (`lmdebug` × `lmssl`)
+
+Multi-host workflows in [`examples/segment/`](examples/segment/README.md) and [`examples/correlation/`](examples/correlation/README.md) pair `lmdebug` (`v0.1.20+`) with [`lmssl`](https://github.com/lmctl-ai/lmssl) (`v0.2.0+`, `ssl.monotonic_us()`) to measure application-visible request segments and correlate HTTPS TLS 1.3 flights against dissected packet captures without requiring elevated privileges or external network access:
+
+| Example | Requirements / arguments | Outputs |
+| --- | --- | --- |
+| [`segment/local-https-timing.lms`](examples/segment/local-https-timing.lms) | Unprivileged loopback HTTPS fixture (`lmssl` + `lmdebug` + Python + OpenSSL); no external network | Version-1 `report.json`, `segments.csv`, `report.md`, `checkpoint.json` |
+| [`segment/local-tcp-timing.lms`](examples/segment/local-tcp-timing.lms) | Unprivileged loopback framed TCP fixture (`lmssl` + `lmdebug` + Python); no SQL or external network | Version-1 `report.json`, `segments.csv`, `report.md`, `checkpoint.json` |
+| [`correlation/https-packets-offline.lms`](examples/correlation/https-packets-offline.lms) | Unprivileged offline replay of [`fixtures/https_tls13.pcapng`](examples/correlation/fixtures/https_tls13.pcapng), [`tls-trace.txt`](examples/correlation/fixtures/tls-trace.txt), and [`server-cert.pem`](examples/correlation/fixtures/server-cert.pem) via `lmdebug pcap` + `lmssl` | `request.json`, `tls-trace.txt`, `capture.pcapng`, `packets.csv`, `steps.json`, `steps.csv`, `report.md` |
+
+```sh
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/segment/local-https-timing.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/segment/local-tcp-timing.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/correlation/https-packets-offline.lms
+```
+
+- **Segment timing boundaries:** `ttfb_us` is measured from the end of `write()` to the first positive 1-byte `read(1)` return; `transfer_us` covers raw HTTP headers and body bytes. `Tls.shutdown()` issues a single shutdown notification (`close_call_kind="tls_shutdown_attempt"`), and full two-way TCP disconnect is unobserved without packet capture (`disconnect_us=null`, `disconnect_status="not_observed_without_capture"`).
+- **TLS 1.3 encrypted flight attribution & separate clocks:** Post-`ServerHello` TLS 1.3 handshake messages (`EncryptedExtensions`, `Certificate`, `CertificateVerify`, `Finished`, `NewSessionTicket`) and HTTP payloads are encrypted inside outer `ApplicationData (23)` records. Without TLS key-log export, `exact` packet attribution is reported only for TCP handshake/teardown packets and unambiguous single-packet visible `ClientHello`/`ServerHello` records; encrypted messages are attributed at `flight` (or `ambiguous` / `app_only`) granularity via `candidate_packet_ids` with empty `packet_ids`. Application `ssl.monotonic_us()` durations and `libpcap` packet timestamps (`pkt_time`) come from separate clock origins and are never subtracted from each other. Use `shark.interfaces()` in `lmdebug pcap` to probe capture devices; `lmdebug caps` describes host command support rather than live capture permission.
+
 ## Use it
 
 The current release lane publishes `lmdebug-linux-x64` and `lmdebug-linux-arm64`, built against dynamic glibc >= 2.35 with all third-party libraries (`iputils` ping, `iperf3`, `libpcap`, `libyara`) and C++ runtimes linked statically. Download from the [releases](https://github.com/lmctl-ai/lmdebug/releases), or let `lmscript` fetch it: a program is a `_dsl_` (or `_lmcode_`) block compiled by `lmscript` (`npm i -g @lmctl-ai/lmctl`), which finds `lmdebug` on `PATH` or downloads the release on first use (`install=`).

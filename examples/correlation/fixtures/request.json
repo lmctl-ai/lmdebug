@@ -1,0 +1,56 @@
+{
+  "attempt_id": "fixture-tls13-edge-001",
+  "capture": {
+    "bpf_filter": "host 198.51.100.42 and tcp port 443",
+    "duration_sec": 25.0,
+    "interface": "offline-fixture",
+    "packet_limit": 100000,
+    "snaplen": 65535,
+    "startup_margin_note": "Offline deterministic replay fixture; no live capture race.",
+    "startup_margin_sec": 0.0
+  },
+  "format_version": 1,
+  "http": {
+    "method": "GET",
+    "path": "/healthz",
+    "request_bytes": 78,
+    "response_bytes": 173,
+    "status_code": 200
+  },
+  "mode": "replay_fixture",
+  "selected_ip": "198.51.100.42",
+  "synthetic_capture": true,
+  "synthetic_timings": true,
+  "timings": {
+    "accounted_us": 42220,
+    "close_call_kind": "tls_shutdown_attempt",
+    "close_call_us": 220,
+    "connect_start_us": 0,
+    "dns_us": 1150,
+    "eof_us": 150,
+    "request_write_us": 500,
+    "residual_us": 600,
+    "tcp_connect_us": 12400,
+    "tls_handshake_us": 16800,
+    "total_us": 42820,
+    "transfer_us": 350,
+    "ttfb_us": 11800
+  },
+  "tls": {
+    "alpn": "http/1.1",
+    "cipher": "TLS_AES_128_GCM_SHA256",
+    "group": "X25519",
+    "server_name": "edge.lmctl.ai",
+    "verified": true,
+    "verify_result": "ok",
+    "version": "TLSv1.3"
+  },
+  "tuple": {
+    "client_ip": "10.20.0.10",
+    "client_port": 54321,
+    "family": "ipv4",
+    "server_ip": "198.51.100.42",
+    "server_port": 443
+  },
+  "url": "https://edge.lmctl.ai/healthz"
+}

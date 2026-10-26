@@ -1,0 +1,146 @@
+# Loopback HTTPS request-segment timing via lmssl ssl.monotonic_us() and lmdebug context.
+# Run from the repository root with lmssl + lmdebug builds first on PATH.
+# Every duration is an application-call observation, not packet RTT or server CPU time.
+# HTTPS shutdown is only an attempt; wire disconnect is unobserved without capture.
+# Remote entry points require network/trust availability (environment privilege, no CAP).
+# TCP is a raw framed request/response probe, never SQL/authentication/query timing.
+mkdir("build");
+mkdir("build/segment");
+p = _lmcode_ cli="lmssl" install="github:lmctl-ai/lmssl@latest";
+# Clock values are comparable only inside this lmssl process.
+fn assert_eq(value: bool, expected_value: bool) -> void {
+  if (value != expected_value) { out.fail("segment invariant failed"); }
+}
+fn quoted(value: string) -> string {
+  return "\"" + str_replace(str_replace(str_replace(str_replace(value, "\\", "\\\\"), "\"", "\\\""), "\r", "\\r"), "\n", "\\n") + "\"";
+}
+let args = ssl.args();
+let checkpoint = args.at(0);
+let hostname = args.at(1);
+let selected_ip = args.at(2);
+let port = str_to_int(args.at(3));
+let request = ssl.unhex(args.at(4));
+let cap = str_to_int(args.at(5));
+let expected = str_to_int(args.at(6));
+let exchange_mode = args.at(7);
+let greeting_length = str_to_int(args.at(8));
+assert_eq(cap > 0 && cap <= 1048576, true);
+let data = "\"format_version\":1,\"selected_ip\":" + quoted(selected_ip);
+let ctx = ssl.client_ctx();
+ctx.min_version("TLSv1.2");
+ctx.alpn("http/1.1");
+ctx.verify(true);
+if (args.at(9) == "") { ctx.system_roots(); } else { ctx.ca_file(args.at(9)); }
+fs.write(checkpoint, "{" + data + ",\"phase\":\"dns\"}");
+let started = ssl.monotonic_us();
+let dns_start = ssl.monotonic_us();
+let addresses = net.resolve(hostname);
+let dns_end = ssl.monotonic_us();
+let selected_found = false;
+for (i in range(0, addresses.len())) {
+  if (addresses.at(i) == selected_ip) { selected_found = true; }
+}
+assert_eq(selected_found, true);
+let dns_us = dns_end - dns_start;
+data = data + ",\"dns_us\":" + str(dns_us);
+fs.write(checkpoint, "{" + data + ",\"phase\":\"tcp_connect\"}");
+net.timeout(2);
+let tcp_start = ssl.monotonic_us();
+let conn = net.connect(selected_ip, port);
+let tcp_end = ssl.monotonic_us();
+let tcp_us = tcp_end - tcp_start;
+data = data + ",\"tcp_connect_us\":" + str(tcp_us) + ",\"local\":" + quoted(conn.local()) + ",\"peer\":" + quoted(conn.peer());
+fs.write(checkpoint, "{" + data + ",\"phase\":\"tls_handshake\"}");
+let tls_start = ssl.monotonic_us();
+let stream = ctx.connect(conn, hostname);
+let tls_end = ssl.monotonic_us();
+assert_eq(stream.verified(), true);
+assert_eq(stream.alpn() == "" || stream.alpn() == "http/1.1", true);
+data = data + ",\"tls_handshake_us\":" + str(tls_end - tls_start) + ",\"verified\":true,\"protocol\":" + quoted(stream.version()) + ",\"cipher\":" + quoted(stream.cipher());
+let greeting_wait_us = -1;
+let greeting_transfer_us = -1;
+let greeting_bytes = 0;
+fs.write(checkpoint, "{" + data + ",\"phase\":\"exchange\"}");
+if (exchange_mode == "server-first") {
+  let greeting_start = ssl.monotonic_us();
+  let greeting = stream.read(1);
+  let greeting_first = ssl.monotonic_us();
+  greeting_bytes = str_len(ssl.hex(greeting)) / 2;
+  assert_eq(greeting_bytes == 1, true);
+  let greeting_last = greeting_first;
+  while (greeting_bytes < greeting_length) {
+    let piece = stream.read(greeting_length - greeting_bytes);
+    let boundary = ssl.monotonic_us();
+    let size = str_len(ssl.hex(piece)) / 2;
+    assert_eq(size > 0, true);
+    greeting_bytes = greeting_bytes + size;
+    greeting_last = boundary;
+  }
+  greeting_wait_us = greeting_first - greeting_start;
+  greeting_transfer_us = greeting_last - greeting_first;
+}
+# No printing/checkpoint I/O from write completion through the last response read.
+let write_start = ssl.monotonic_us();
+let request_bytes = stream.write(request);
+let write_end = ssl.monotonic_us();
+let response = stream.read(1);
+let read_boundary = ssl.monotonic_us();
+let response_bytes = str_len(ssl.hex(response)) / 2;
+let first_at = -1;
+let last_at = -1;
+let eof_at = -1;
+let saw_eof = false;
+if (response_bytes > 0) {
+  first_at = read_boundary;
+  last_at = read_boundary;
+} else {
+  saw_eof = true;
+  eof_at = read_boundary;
+}
+let limit = cap;
+if (expected >= 0 && expected < limit) { limit = expected; }
+while (!saw_eof && response_bytes < limit) {
+  let want = limit - response_bytes;
+  if (want > 8192) { want = 8192; }
+  let piece = stream.read(want);
+  read_boundary = ssl.monotonic_us();
+  let size = str_len(ssl.hex(piece)) / 2;
+  if (size > 0) {
+    response = response + piece;
+    response_bytes = response_bytes + size;
+    last_at = read_boundary;
+  } else {
+    saw_eof = true;
+    eof_at = read_boundary;
+  }
+}
+let ttfb_us = -1;
+let transfer_us = -1;
+let eof_us = -1;
+if (first_at >= 0) {
+  ttfb_us = first_at - write_end;
+  transfer_us = last_at - first_at;
+  if (saw_eof) { eof_us = eof_at - last_at; }
+}
+let first_relative = -1;
+let last_relative = -1;
+if (first_at >= 0) { first_relative = first_at - started; last_relative = last_at - started; }
+let cap_exhausted = response_bytes >= cap && (expected < 0 || expected > cap);
+let write_us = write_end - write_start;
+# Save completed measurements before closing: close may fail independently.
+data = data + ",\"phase\":\"close\",\"request_write_us\":" + str(write_us) + ",\"request_bytes\":" + str(request_bytes) + ",\"response_bytes\":" + str(response_bytes) + ",\"response_hex\":" + quoted(ssl.hex(response)) + ",\"ttfb_us\":" + str(ttfb_us) + ",\"transfer_us\":" + str(transfer_us) + ",\"eof_observation_us\":" + str(eof_us) + ",\"greeting_wait_us\":" + str(greeting_wait_us) + ",\"greeting_transfer_us\":" + str(greeting_transfer_us) + ",\"greeting_bytes\":" + str(greeting_bytes) + ",\"first_byte_us\":" + str(first_relative) + ",\"last_byte_us\":" + str(last_relative) + ",\"eof\":" + str(saw_eof) + ",\"cap_exhausted\":" + str(cap_exhausted);
+fs.write(checkpoint, "{" + data + "}");
+let close_start = ssl.monotonic_us();
+stream.shutdown();
+let close_end = ssl.monotonic_us();
+let total_us = close_end - started;
+data = data + ",\"close_call_us\":" + str(close_end - close_start) + ",\"total_us\":" + str(total_us);
+fs.write(checkpoint, "{" + data + ",\"complete\":true}");
+end _lmcode_
+savedsl(p, "build/segment/https.dslb");
+argv = ["python3", "examples/segment/timing.py", "local-https", "--host-program", dsl_cli(p)[0], "--bytecode", "build/segment/https.dslb", "--output", "build/segment/local-https"];
+for (arg in ARGV) { push(argv, arg); }
+r = system(argv, 30000);
+print(r.stdout);
+if (r.code != 0) { print(r.stderr); }
+assert(r.code == 0);

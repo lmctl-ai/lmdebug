@@ -1,0 +1,76 @@
+# Offline deterministic HTTPS packet-to-TLS-1.3-flight correlation replay.
+# Unprivileged: replays examples/correlation/fixtures/https_tls13.pcapng + tls-trace.txt + server-cert.pem.
+#|mode=replay_fixture status=ok tuple=10.20.0.10:54321->198.51.100.42:443
+#|packets=14 ignored_other_tuple=1 steps=17
+#|completeness: syn=true syn_ack=true est_ack=true fin=true
+#|exact_steps=TCP SYN,TCP SYN-ACK,TCP Establishing ACK,ClientHello,ServerHello,TCP Teardown (FIN/RST)
+#|flight_steps=ChangeCipherSpec,EncryptedExtensions,Certificate,CertificateVerify,Server Finished,ChangeCipherSpec,Client Finished,HTTP Request,NewSessionTicket,HTTP Response,TLS close_notify
+
+mkdir("build/examples/correlation/offline");
+
+ssl_prog = _lmcode_ cli="lmssl" install="github:lmctl-ai/lmssl@latest";
+let t0 = ssl.monotonic_us();
+let cert = ssl.load_cert("examples/correlation/fixtures/server-cert.pem");
+if (!cert.matches_host("edge.lmctl.ai")) {
+    out.fail("fixture certificate did not match edge.lmctl.ai");
+}
+if (!cert.matches_host("198.51.100.42")) {
+    out.fail("fixture certificate did not match 198.51.100.42");
+}
+let trace_raw = fs.read("examples/correlation/fixtures/tls-trace.txt");
+let trace_sha = ssl.digest("SHA256", trace_raw);
+let t1 = ssl.monotonic_us();
+if (t0 <= 0 || t1 < t0) {
+    out.fail("ssl.monotonic_us() failed non-decreasing steady clock check");
+}
+let delta_us = t1 - t0;
+let verify_json = "{\n"
+    + "  \"lmssl_version\": \"" + ssl.version() + "\",\n"
+    + "  \"cert_subject\": \"" + cert.subject() + "\",\n"
+    + "  \"cert_issuer\": \"" + cert.issuer() + "\",\n"
+    + "  \"cert_fingerprint_sha256\": \"" + cert.fingerprint("SHA256") + "\",\n"
+    + "  \"trace_sha256\": \"" + trace_sha + "\",\n"
+    + "  \"monotonic_t0_us\": " + str(t0) + ",\n"
+    + "  \"monotonic_t1_us\": " + str(t1) + ",\n"
+    + "  \"monotonic_delta_us\": " + str(delta_us) + "\n"
+    + "}\n";
+fs.write("build/examples/correlation/offline/lmssl_verify.json", verify_json);
+end _lmcode_
+savedsl(ssl_prog, "build/examples/correlation/offline/ssl_verify.dslb");
+r_ssl = system ${dsl_cli(ssl_prog)} --dsl build/examples/correlation/offline/ssl_verify.dslb;
+if (r_ssl.code != 0) {
+    print(r_ssl.stdout + r_ssl.stderr);
+}
+assert(r_ssl.code == 0);
+
+pcap_prog = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let cap = shark.open("examples/correlation/fixtures/https_tls13.pcapng");
+assert_eq(cap.packet_count(), 15);
+assert_eq(cap.retransmission_count(), 1);
+assert_eq(cap.pkt_field(4, "tls.sni"), "edge.lmctl.ai");
+assert_eq(cap.pkt_field(4, "tls.version"), "TLS 1.3");
+assert_eq(cap.pkt_field(4, "tls.alpn"), "http/1.1");
+assert_eq(cap.pkt_field(5, "tls.version"), "TLS 1.3");
+
+let field_list = "frame.number,frame.time,frame.time_epoch_ns,frame.len,frame.cap_len,"
+    + "ip.src,ip.dst,ipv6.src,ipv6.dst,tcp.srcport,tcp.dstport,tcp.seq,tcp.ack,"
+    + "tcp.rel_seq,tcp.rel_ack,tcp.flags,tcp.len,tcp.stream,"
+    + "tcp.analysis.retransmission,tls.handshake.type,tls.version,tls.sni,"
+    + "tls.alpn,tls.cipher_suite,frame.info";
+cap.save_fields_csv("tcp", field_list, "build/examples/correlation/offline/dissected_fields.csv");
+cap.save_packets_csv("build/examples/correlation/offline/dissected_packets.csv");
+cap.save_json("build/examples/correlation/offline/dissected_summary.json");
+end _lmcode_
+savedsl(pcap_prog, "build/examples/correlation/offline/pcap_dissect.dslb");
+r_pcap = system ${dsl_cli(pcap_prog)} --dsl build/examples/correlation/offline/pcap_dissect.dslb;
+if (r_pcap.code != 0) {
+    print(r_pcap.stdout + r_pcap.stderr);
+}
+assert(r_pcap.code == 0);
+
+r_corr = system python3 examples/correlation/correlate_https.py --offline --dissected-csv build/examples/correlation/offline/dissected_fields.csv --fixture-dir examples/correlation/fixtures --lmssl-verify-json build/examples/correlation/offline/lmssl_verify.json --out-dir build/examples/correlation/offline;
+print(r_corr.stdout);
+if (r_corr.code != 0) {
+    print(r_corr.stderr);
+}
+assert(r_corr.code == 0);
