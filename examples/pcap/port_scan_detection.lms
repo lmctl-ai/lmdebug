@@ -12,15 +12,15 @@ let c = shark.capture();
 let srv = "10.0.0.25";
 # 1. Ordinary office traffic: 6 clients x 8 HTTPS/SSH sessions spread over 60 s
 for (h in range(0, 6)) {
-    let cli = "10.0.0." + str(101 + h);
+    let client_ip = "10.0.0." + str(101 + h);
     for (s in range(0, 8)) {
         let t = 1.0 + float(h) * 0.7 + float(s) * 7.1;
         let port = 443;
         if (s % 4 == 3) {
             port = 22;
         }
-        c.tcp_handshake(t, cli, 51000 + s, srv, port, 0.0008);
-        c.tcp_close(t + 2.0, cli, 51000 + s, srv, port, 1001, 5001, 0.0008);
+        c.tcp_handshake(t, client_ip, 51000 + s, srv, port, 0.0008);
+        c.tcp_close(t + 2.0, client_ip, 51000 + s, srv, port, 1001, 5001, 0.0008);
     }
 }
 # 2. Vertical SYN scan from 203.0.113.66: ports 1..1024 in scrambled order, 2 per 50 ms

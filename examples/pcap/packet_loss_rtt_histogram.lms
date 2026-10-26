@@ -19,7 +19,7 @@ let sum_b = 0.0;
 let n_b = 0;
 let lost_b = 0;
 for (path in range(0, 2)) {
-    let cli = "10.50.0.7";
+    let client_ip = "10.50.0.7";
     let srv = "10.8.0.1";
     let sport = 9000;
     if (path == 1) {
@@ -37,16 +37,16 @@ for (path in range(0, 2)) {
         if (path == 1) {
             rtt = 0.045 + 0.060 * pow(u, 3.0);
         }
-        c.tcp_segment(t, cli, 40000 + path, srv, sport, seq, 7001, "PSH,ACK", 64240, req);
+        c.tcp_segment(t, client_ip, 40000 + path, srv, sport, seq, 7001, "PSH,ACK", 64240, req);
         if (path == 1 && v < 0.03) {
             # lost: the RTO fires after 200 ms and the retransmission is acknowledged
             lost_b = lost_b + 1;
             let tr = t + 0.200;
-            c.tcp_segment(tr, cli, 40000 + path, srv, sport, seq, 7001, "PSH,ACK", 64240, req);
-            c.tcp_segment(tr + rtt, srv, sport, cli, 40000 + path, 7001, seq + 512, "ACK", 65535, "");
+            c.tcp_segment(tr, client_ip, 40000 + path, srv, sport, seq, 7001, "PSH,ACK", 64240, req);
+            c.tcp_segment(tr + rtt, srv, sport, client_ip, 40000 + path, 7001, seq + 512, "ACK", 65535, "");
             t = tr + rtt + 0.005;
         } else {
-            c.tcp_segment(t + rtt, srv, sport, cli, 40000 + path, 7001, seq + 512, "ACK", 65535, "");
+            c.tcp_segment(t + rtt, srv, sport, client_ip, 40000 + path, 7001, seq + 512, "ACK", 65535, "");
             if (path == 0) {
                 sum_a = sum_a + rtt * 1000.0;
             } else {
