@@ -1,0 +1,92 @@
+name: Public docs and examples
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-content:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node for lmscript
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install the compiler that accepts _lmcode_
+        run: npm install --global @lmctl-ai/lmctl@0.2.420
+
+      - name: Install released hosts referenced by public examples
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: bash scripts/install-hosts.sh
+
+      - name: Check README links, images, and autorun targets
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import re
+          from urllib.parse import unquote, urlsplit
+
+          root = Path.cwd()
+          readme = root / "README.md"
+          text = readme.read_text(encoding="utf-8")
+          links = re.findall(r"!?\[[^\]]*\]\(([^)]+)\)", text)
+          links += re.findall(r"<img\b[^>]*\bsrc=[\"']([^\"']+)[\"']", text, re.I)
+          for value in links:
+              target = value.strip().split()[0].strip("<>")
+              parsed = urlsplit(target)
+              if parsed.scheme or not parsed.path:
+                  continue
+              local = (root / unquote(parsed.path)).resolve()
+              if not local.is_relative_to(root.resolve()) or not local.exists():
+                  raise SystemExit(f"README target is missing or escapes the public tree: {value}")
+
+          autorun = re.compile(r"lmctl\s+autorun\s+(https?://[^\s`<>]+)", re.I)
+          owner, repo = os.environ["GITHUB_REPOSITORY"].split("/", 1)
+          checked = 0
+          for line in text.splitlines():
+              for value in autorun.findall(line):
+                  parsed = urlsplit(value.rstrip(",.;)"))
+                  parts = [part for part in parsed.path.split("/") if part]
+                  if "raw.githubusercontent.com" not in parsed.netloc or len(parts) < 4:
+                      raise SystemExit(f"README autorun URL is not a raw GitHub file URL: {value}")
+                  if parts[0] != owner or parts[1] != repo:
+                      continue
+                  target = root.joinpath(*parts[3:]).resolve()
+                  if not target.is_relative_to(root.resolve()) or not target.is_file():
+                      raise SystemExit(f"README autorun target is absent from this public tree: {value}")
+                  checked += 1
+
+          print(f"checked {len(links)} local README links/images and {checked} raw autorun URLs")
+          PY
+
+      - name: Check every public example with lmscript
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -d examples ]; then
+            find examples -type f -name '*.lms' -print0 |
+              while IFS= read -r -d '' example; do
+                skip_reason=""
+                if [ -n "${LMCTL_UNAVAILABLE_EXAMPLES_FILE:-}" ] && [ -f "$LMCTL_UNAVAILABLE_EXAMPLES_FILE" ]; then
+                  while IFS=$'\t' read -r skipped_example reason; do
+                    if [ "$skipped_example" = "$example" ]; then skip_reason="$reason"; break; fi
+                  done < "$LMCTL_UNAVAILABLE_EXAMPLES_FILE"
+                fi
+                if [ -n "$skip_reason" ]; then
+                  echo "SKIP $example: $skip_reason"
+                  continue
+                fi
+                lmscript --check "$example"
+              done
+          fi

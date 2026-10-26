@@ -1,0 +1,20 @@
+# Read-only sys cpu; values vary by host and load.
+# exit: 0
+#|sys cpu
+#|done
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+println("sys cpu");
+let c = sys.cpu();
+if (c.error() != "") {
+  println("cpu unavailable: " + c.error());
+} else {
+  println("cpus: " + str(c.cpu_count()) + " idle%: " + str(c.idle_pct()));
+  let cores = c.cores();
+  for (i in range(0, cores.len())) {
+    let core = cores.at(i);
+    println("cpu " + str(core.id()) + " user%: " + str(core.user_pct()));
+  }
+}
+println("done");
+end _dsl_
+savedsl(p, "build/sys-cpu.dslb");

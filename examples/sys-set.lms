@@ -1,0 +1,13 @@
+# Read-only invocation demonstrates a sysctl plan; never pass --apply casually.
+# exit: 0
+#|sys set plan
+#|dry-run: true
+#|applied: false
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+println("sys set plan");
+let c = sys.set("net.ipv4.ip_forward", "0");
+println("dry-run: " + str(c.dry_run()));
+println("applied: " + str(c.applied()));
+println(c.detail());
+end _dsl_
+savedsl(p, "build/sys-set.dslb");

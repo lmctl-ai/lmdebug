@@ -1,0 +1,31 @@
+# Chapter: Detection - Persistence and autoruns enumeration across systemd, cron, shell rc, and ld.so
+# Shows: detect.autoruns, AutorunList.len/at/root/suspicious_count/skipped/error, Autorun.location/kind/name/enabled/nonempty/suspicion/exec_lines
+# Run: lmscript examples/detect-autoruns.lms   (then: lmdebug --dsl build/detect-autoruns.dslb)
+# Needs: nothing (offline); enumerates standard Linux persistence locations under /.
+# exit: 0
+# expect:
+#|detect autoruns:
+#|root: /
+#|host scan ok: true
+#|missing root error-as-data: true
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+
+println("detect autoruns:");
+let list = detect.autoruns();
+println("root: " + list.root());
+if (list.error() == "") {
+  println("host scan ok: true");
+  println("entries: " + str(list.len()) + " suspicious: " + str(list.suspicious_count()));
+}
+if (list.len() > 0) {
+  let a0 = list.at(0);
+  println("first: " + a0.location() + " [" + a0.kind() + "] suspicion=" + a0.suspicion());
+}
+
+let missing = detect.autoruns("/nonexistent-lmdebug-autoruns-root");
+if (missing.error() != "") {
+  println("missing root error-as-data: true");
+}
+
+end _dsl_
+savedsl(p, "build/detect-autoruns.dslb");

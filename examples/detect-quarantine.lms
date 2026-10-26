@@ -1,0 +1,8 @@
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+let c = detect.quarantine("examples/detect-quarantine.lms");
+println("quarantine action: " + c.action());
+#|quarantine action: detect.quarantine
+println("quarantine dry: " + str(c.dry_run()));
+#|quarantine dry: true
+end _dsl_
+savedsl(p, "build/detect-quarantine.dslb");

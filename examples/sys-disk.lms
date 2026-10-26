@@ -1,0 +1,16 @@
+# Read-only sys disk; values depend on the host and sampling window.
+# exit: 0
+#|sys disk
+#|done
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+println("sys disk");
+let r = sys.disk();
+if (r.error() != "") { println("disk unavailable: " + r.error()); } else {
+  for (i in range(0, r.disks().len())) {
+    let d = r.disks().at(i);
+    println(d.name() + " read_bps=" + str(d.read_bps()) + " write_bps=" + str(d.write_bps()));
+  }
+}
+println("done");
+end _dsl_
+savedsl(p, "build/sys-disk.dslb");

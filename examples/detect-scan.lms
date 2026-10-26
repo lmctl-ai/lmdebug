@@ -1,0 +1,32 @@
+# Chapter: Detection - YARA file and directory scanning with embedded builtin rules
+# Shows: detect.scan, DetectScanResult.scanned_files/matched_files/matches/skipped/error, Match.path/rule/namespace/severity/tags/matches
+# Run: lmscript examples/detect-scan.lms      (then: lmdebug --dsl build/detect-scan.dslb)
+# Needs: nothing (offline); scans rules/builtin.yar against embedded builtin YARA rules.
+# exit: 0
+# expect:
+#|detect scan:
+#|scanned files: 1
+#|first rule: lmdebug_test_marker (builtin, low)
+#|missing path error-as-data: true
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+
+println("detect scan:");
+let res = detect.scan("rules/builtin.yar");
+if (res.error() == "") {
+  println("scanned files: " + str(res.scanned_files()));
+}
+let hits = res.matches();
+if (hits.len() > 0) {
+  let m0 = hits.at(0);
+  let s0 = m0.matches().at(0);
+  println("first rule: " + m0.rule() + " (" + m0.namespace() + ", " + m0.severity() + ")");
+  println("  string=" + s0.identifier() + " offset=" + str(s0.offset()) + " len=" + str(s0.length()));
+}
+
+let missing = detect.scan("/nonexistent-lmdebug-detect-scan-path");
+if (missing.error() != "") {
+  println("missing path error-as-data: true");
+}
+
+end _dsl_
+savedsl(p, "build/detect-scan.dslb");

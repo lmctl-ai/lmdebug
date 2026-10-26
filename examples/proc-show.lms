@@ -1,0 +1,37 @@
+# Chapter: Process - deep process inspection and dry-run signal plan
+# Shows: proc.show, ProcShow.pid/name/state/uid/gid/threads/limits/fds/net/maps/error, proc.kill, Change.action/dry_run/applied
+# Run: lmscript examples/proc-show.lms      (then: lmdebug --dsl build/proc-show.dslb)
+# Needs: nothing (offline); /proc is always available on Linux and proc.kill without --apply is a dry run.
+# exit: 0
+# expect:
+#|proc show:
+#|pid 1 inspected: true
+#|limits populated: true
+#|kill dry-run: true
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+
+println("proc show:");
+let s = proc.show(1);
+println("  pid=" + str(s.pid()) + " name=" + s.name() + " user=" + s.user() +
+        " state=" + s.state() + " threads=" + str(s.threads()));
+if (s.pid() == 1) {
+  if (s.error() == "") {
+    println("pid 1 inspected: true");
+  }
+}
+if (s.limits().len() > 0) {
+  println("limits populated: true");
+}
+
+# PID 1 is protected even in dry-run. Use an absent PID for a safe noop plan.
+let ch = proc.kill(99999999, "SIGTERM");
+println("  plan action=" + ch.action() + " result=" + ch.result() +
+        " warnings=" + str(ch.warnings().len()));
+if (ch.dry_run()) {
+  if (!ch.applied()) {
+    println("kill dry-run: true");
+  }
+}
+
+end _dsl_
+savedsl(p, "build/proc-show.dslb");

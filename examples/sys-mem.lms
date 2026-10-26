@@ -1,0 +1,16 @@
+# Read-only sys mem; values vary by host and load.
+# exit: 0
+#|sys mem
+#|done
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+println("sys mem");
+let m = sys.mem();
+if (m.error() != "") {
+  println("memory unavailable: " + m.error());
+} else {
+  println("total: " + str(m.total_bytes()) + " available: " + str(m.available_bytes()));
+  println("used%: " + str(m.used_pct()));
+}
+println("done");
+end _dsl_
+savedsl(p, "build/sys-mem.dslb");

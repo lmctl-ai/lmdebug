@@ -1,0 +1,31 @@
+# Chapter: Process - process enumeration
+# Shows: proc.list, ProcList.len/at, ProcInfo.pid/ppid/user/name/state/rss_bytes/fd_count/cmdline
+# Run: lmscript examples/proc-list.lms      (then: lmdebug --dsl build/proc-list.dslb)
+# Needs: nothing (offline); /proc is always available on Linux.
+# exit: 0
+# expect:
+#|process table:
+#|pid 1 present: true
+#|processes enumerated
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+
+println("process table:");
+let procs = proc.list();
+let found_pid1 = false;
+for (i in range(0, procs.len())) {
+  let pr = procs.at(i);
+  if (pr.pid() == 1) {
+    found_pid1 = true;
+    println("  init: pid=" + str(pr.pid()) + " name=" + pr.name() +
+            " user=" + pr.user() + " state=" + pr.state());
+  }
+}
+println("pid 1 present: " + str(found_pid1));
+if (procs.len() > 0) {
+  println("processes enumerated");
+} else {
+  println("no processes found");
+}
+
+end _dsl_
+savedsl(p, "build/proc-list.dslb");

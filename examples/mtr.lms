@@ -1,0 +1,29 @@
+# Chapter: Diagnostics - repeated traceroute
+# Shows: net.mtr, MtrResult dest_ip/error/cycles/hops, MtrHopList len/at,
+#        MtrHop ttl/host/loss_pct/avg_ms/reached
+# Run: lmscript examples/mtr.lms      (then: lmdebug --dsl build/mtr.dslb)
+# Needs: CAP_NET_RAW (or root) for real probes; without it net.mtr returns
+#        the permission error as data and the script still reaches the marker.
+# exit: 0
+# expect:
+#|mtr 127.0.0.1 x3
+#|done
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+
+println("mtr 127.0.0.1 x3");
+let r = net.mtr("127.0.0.1", 3);
+if (r.error() != "") {
+  println("mtr unavailable: " + r.error());
+} else {
+  println("dest: " + r.dest_ip());
+  let hops = r.hops();
+  for (i in range(0, hops.len())) {
+    let h = hops.at(i);
+    println("  hop " + str(h.ttl()) + " " + h.host() +
+            " loss=" + str(h.loss_pct()) + " avg=" + str(h.avg_ms()));
+  }
+}
+println("done");
+
+end _dsl_
+savedsl(p, "build/mtr.dslb");

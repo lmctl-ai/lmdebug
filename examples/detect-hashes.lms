@@ -1,0 +1,17 @@
+# Exact-hash scanning needs an operator-imported store; absent feeds are data.
+# Import with: lmdebug detect hashes import FEED --apply
+# exit: 0
+#|hash scan:
+#|done
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+println("hash scan:");
+let r = detect.hashes_scan("examples/detect-hashes.lms");
+if (r.error() != "") {
+  println("hash scan unavailable: " + r.error());
+} else {
+  println("hits: " + str(r.hit_count()));
+  println(r.findings_json());
+}
+println("done");
+end _dsl_
+savedsl(p, "build/detect-hashes.dslb");

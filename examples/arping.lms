@@ -1,0 +1,20 @@
+# Chapter: Diagnostics - explicit-interface IPv4 ARP
+# Shows: net.arping result metadata, error handling, and empty probe list.
+# Run: lmscript examples/arping.lms      (then: lmdebug --dsl build/arping.dslb)
+# Needs: nothing; loopback is intentionally rejected because self-ARP is not
+#        a reachability test.
+# exit: 0
+# expect:
+#|arping local validation
+#|done
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+
+println("arping local validation");
+let r = net.arping("lo", "127.0.0.1", 1, 10, 10);
+if (r.error() != "") {
+  println("arping unavailable: " + r.error());
+}
+println("done");
+
+end _dsl_
+savedsl(p, "build/arping.dslb");

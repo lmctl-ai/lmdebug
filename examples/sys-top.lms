@@ -1,0 +1,16 @@
+# Read-only sys top; values depend on the host and sampling window.
+# exit: 0
+#|sys top
+#|done
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+println("sys top");
+let r = sys.top();
+if (r.error() != "") { println("top unavailable: " + r.error()); } else {
+  for (i in range(0, r.top().len())) {
+    let p0 = r.top().at(i);
+    println(str(p0.pid()) + " " + p0.process() + " cpu%=" + str(p0.cpu_pct()) + " rss=" + str(p0.rss_bytes()));
+  }
+}
+println("done");
+end _dsl_
+savedsl(p, "build/sys-top.dslb");

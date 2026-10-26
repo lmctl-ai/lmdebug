@@ -1,0 +1,50 @@
+# Chapter: Basics - ethtool link settings, driver info, and NIC statistics
+# Shows: net.ethtool_link, net.ethtool_driver, net.ethtool_stats,
+#        EthtoolLink iface/speed_mbps/duplex/autoneg/port/link_detected/error,
+#        EthtoolDriver iface/driver/version/firmware_version/bus_info/n_stats/error,
+#        EthtoolStats iface/error/stats, EthtoolStat name/value, EthtoolStatList len/at
+# Run: lmscript examples/ethtool.lms   (then: lmdebug --dsl build/ethtool.dslb)
+# Needs: nothing (offline); queries loopback "lo", where settings map to
+#        speed=-1/unknown and link=true, while driver/statistics surface
+#        unsupported ioctls via error() data.
+# exit: 0
+# expect:
+#|ethtool lo
+#|lo speed=-1
+#|lo link=true
+#|ethtool done
+p = _dsl_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+
+println("ethtool lo");
+let link = net.ethtool_link("lo");
+if (link.error() != "") {
+  println("link error: " + link.error());
+} else {
+  println(link.iface() + " speed=" + str(link.speed_mbps()));
+  println(link.iface() + " duplex=" + link.duplex() + " autoneg=" +
+          link.autoneg() + " port=" + link.port());
+  println(link.iface() + " link=" + str(link.link_detected()));
+}
+let drv = net.ethtool_driver("lo");
+if (drv.error() != "") {
+  println("driver error: " + drv.error());
+} else {
+  println("driver: " + drv.driver() + " version=" + drv.version() +
+          " fw=" + drv.firmware_version() + " bus=" + drv.bus_info() +
+          " n_stats=" + str(drv.n_stats()));
+}
+let st = net.ethtool_stats("lo");
+if (st.error() != "") {
+  println("stats error: " + st.error());
+} else {
+  let list = st.stats();
+  println("stats: " + str(list.len()));
+  for (i in range(0, list.len())) {
+    let item = list.at(i);
+    println("  " + item.name() + "=" + str(item.value()));
+  }
+}
+println("ethtool done");
+
+end _dsl_
+savedsl(p, "build/ethtool.dslb");
