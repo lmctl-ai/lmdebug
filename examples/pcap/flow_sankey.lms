@@ -1,0 +1,123 @@
+# Where does a branch office's WAN uplink go? A sampled capture of the egress link is
+# grouped by internal subnet (left) and by service (right) with lmshark display filters
+# (CIDR source + port), and each band's width is the wire bytes of that conversation
+# group. Every number on the diagram is asserted against filter(...).total_bytes().
+mkdir("build/examples/pcap");
+mkdir("build/rendered");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let c = shark.capture();
+let p946 = "";
+for (i in range(0, 946)) {
+    p946 = p946 + "t";
+}
+let p958 = p946 + "uuuuuuuuuuuu";
+let p58 = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+let p158 = p58 + p58 + "rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr";
+# 1000-byte frames: TCP 14+20+20+946, UDP 14+20+8+958; 100-byte DNS-sized and 200-byte RTP frames
+let t = 0.0;
+for (i in range(0, 480)) {
+    t = t + 0.001;
+    c.tcp_segment(t, "10.2.1." + str(10 + i % 40), 50000 + i % 40, "198.51.100.10", 443, 1000 + i * 946, 1, "PSH,ACK", 64240, p946);
+}
+for (i in range(0, 360)) {
+    t = t + 0.001;
+    c.udp_datagram(t, "10.2.1." + str(10 + i % 40), 51000 + i % 40, "203.0.113.200", 443, p958);
+}
+for (i in range(0, 100)) {
+    t = t + 0.001;
+    c.udp_datagram(t, "10.2.1." + str(10 + i % 40), 52000 + i, "10.2.0.53", 53, p58);
+    c.udp_datagram(t + 0.0005, "10.2.2." + str(5 + i % 6), 53000 + i, "10.2.0.53", 53, p58);
+}
+for (i in range(0, 600)) {
+    t = t + 0.001;
+    c.tcp_segment(t, "10.2.2." + str(5 + i % 6), 44000 + i % 6, "192.0.2.80", 873, 1000 + (i / 6) * 946, 1, "PSH,ACK", 64240, p946);
+}
+for (i in range(0, 80)) {
+    t = t + 0.001;
+    c.tcp_segment(t, "10.2.2." + str(5 + i % 6), 45000 + i % 6, "198.51.100.10", 443, 1000 + (i / 6) * 946, 1, "PSH,ACK", 64240, p946);
+}
+for (i in range(0, 600)) {
+    t = t + 0.001;
+    c.udp_datagram(t, "10.2.3." + str(20 + i % 12), 16384, "192.0.2.5", 10000, p158);
+}
+for (i in range(0, 30)) {
+    t = t + 0.001;
+    c.tcp_segment(t, "10.2.4." + str(50 + i % 3), 33000 + i % 3, "203.0.113.77", 8883, 1000 + (i / 3) * 946, 1, "PSH,ACK", 64240, p946);
+}
+assert_eq(c.filter("ip.src == 10.2.1.0/24 && tcp.dstport == 443").total_bytes(), 480000);
+assert_eq(c.filter("ip.src == 10.2.1.0/24 && udp.dstport == 443").total_bytes(), 360000);
+assert_eq(c.filter("ip.src == 10.2.1.0/24 && udp.dstport == 53").total_bytes(), 10000);
+assert_eq(c.filter("ip.src == 10.2.2.0/24 && tcp.dstport == 443").total_bytes(), 80000);
+assert_eq(c.filter("ip.src == 10.2.2.0/24 && udp.dstport == 53").total_bytes(), 10000);
+assert_eq(c.filter("ip.src == 10.2.2.0/24 && tcp.dstport == 873").total_bytes(), 600000);
+assert_eq(c.filter("ip.src == 10.2.3.0/24 && udp.dstport == 10000").total_bytes(), 120000);
+assert_eq(c.filter("ip.src == 10.2.4.0/24 && tcp.dstport == 8883").total_bytes(), 30000);
+assert_eq(c.total_bytes(), 1690000);
+assert_eq(c.filter("ip.src == 10.2.1.0/24").total_bytes(), 850000);
+assert_eq(c.filter("ip.src == 10.2.2.0/24").total_bytes(), 690000);
+assert_eq(c.filter("tcp.dstport == 443 || udp.dstport == 443").total_bytes(), 920000);
+assert_eq(c.unique_hosts() > 60, true);
+c.save_flows_csv("build/examples/pcap/flow_sankey_flows.csv");
+end _lmcode_
+savedsl(p, "build/examples/pcap/flow_sankey.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/flow_sankey.dslb;
+if (r.code != 0) {
+  print(r.stdout + r.stderr);
+}
+assert(r.code == 0);
+
+draw = _lmcode_ cli="lmdraw" install="github:lmctl-ai/lmdraw@latest";
+# one band from a left node slice [ya, ya+h] to a right node slice [yb, yb+h] (cubic Bezier ribbon)
+fn band(ya: float, yb: float, h: float, col: string) -> void {
+    let x0 = 250.0;
+    let x1 = 700.0;
+    let xm = 475.0;
+    let d = "M " + str(x0) + " " + str(ya) + " C " + str(xm) + " " + str(ya) + " " + str(xm) + " " + str(yb) + " " + str(x1) + " " + str(yb) + " L " + str(x1) + " " + str(yb + h) + " C " + str(xm) + " " + str(yb + h) + " " + str(xm) + " " + str(ya + h) + " " + str(x0) + " " + str(ya + h) + " Z";
+    scene.path(d, col, col, 0.5).set_attr("fill-opacity", "0.55");
+}
+fn lnode(y: float, h: float, col: string, name: string, sub: string) -> void {
+    scene.rect(232.0, y, 18.0, h, col);
+    scene.text(222.0, y + h / 2.0 - 2.0, 13.0, name, "#e6edf3").set_attr("text-anchor", "end").set_attr("font-weight", "700");
+    scene.text(222.0, y + h / 2.0 + 14.0, 11.0, sub, "#8b949e").set_attr("text-anchor", "end");
+}
+fn rnode(y: float, h: float, col: string, name: string, sub: string) -> void {
+    scene.rect(700.0, y, 18.0, h, col);
+    scene.text(728.0, y + h / 2.0 - 2.0, 13.0, name, "#e6edf3").set_attr("font-weight", "700");
+    scene.text(728.0, y + h / 2.0 + 14.0, 11.0, sub, "#8b949e");
+}
+scene.canvas(960, 760, "#0d1520");
+scene.text(480.0, 34.0, 21.0, "Branch WAN uplink: who sends what, where (1.69 MB sampled egress)", "#e6edf3").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(480.0, 56.0, 12.5, "band width = wire bytes per (source subnet, service) from lmshark filters like ip.src == 10.2.1.0/24 && tcp.dstport == 443", "#8b949e").set_attr("text-anchor", "middle");
+scene.text(241.0, 92.0, 12.0, "source subnet", "#6e7681").set_attr("text-anchor", "middle");
+scene.text(709.0, 92.0, 12.0, "service", "#6e7681").set_attr("text-anchor", "middle");
+# bands (0.3 px per kB), stacked in service order to avoid crossings
+band(110.0, 110.0, 144.0, "#58a6ff");
+band(254.0, 296.0, 108.0, "#a371f7");
+band(362.0, 422.0, 3.0, "#8b949e");
+band(383.0, 254.0, 24.0, "#58a6ff");
+band(407.0, 425.0, 3.0, "#8b949e");
+band(410.0, 446.0, 180.0, "#3fb950");
+band(608.0, 644.0, 36.0, "#f2cc60");
+band(662.0, 698.0, 9.0, "#ff7b72");
+lnode(110.0, 255.0, "#c9d1d9", "Laptops", "10.2.1.0/24  850 kB");
+lnode(383.0, 207.0, "#c9d1d9", "Servers", "10.2.2.0/24  690 kB");
+lnode(608.0, 36.0, "#c9d1d9", "IP phones", "10.2.3.0/24  120 kB");
+lnode(662.0, 9.0, "#c9d1d9", "IoT sensors", "10.2.4.0/24  30 kB");
+rnode(110.0, 168.0, "#58a6ff", "SaaS (TLS :443)", "560 kB: laptops 480, servers 80");
+rnode(296.0, 108.0, "#a371f7", "Video (QUIC udp/443)", "360 kB, laptops only");
+rnode(422.0, 6.0, "#8b949e", "DNS (udp/53)", "20 kB");
+rnode(446.0, 180.0, "#3fb950", "Off-site backup (:873)", "600 kB, 35 % of the link");
+rnode(644.0, 36.0, "#f2cc60", "VoIP RTP (udp/10000)", "120 kB");
+rnode(698.0, 9.0, "#ff7b72", "Vendor MQTT (:8883)", "30 kB");
+scene.text(480.0, 742.0, 12.0, "Moving the 600 kB backup to off-hours frees 35 % of the uplink for SaaS and video.", "#8b949e").set_attr("text-anchor", "middle");
+scene.render_png("build/rendered/flow_sankey.png", 960, 760, 1);
+end _lmcode_
+savedsl(draw, "build/examples/pcap/flow_sankey_draw.dslb");
+rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/flow_sankey_draw.dslb;
+assert(rd.code == 0);
+copy_file("build/rendered/flow_sankey.png", "images/flow_sankey.png");
+copy_file("build/rendered/flow_sankey.png", "docs/images/pcap/flow_sankey.png");
+print("wrote images/flow_sankey.png");

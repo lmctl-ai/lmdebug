@@ -1,0 +1,150 @@
+mkdir("build");
+mkdir("build/examples/pcap");
+mkdir("build/rendered");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+# 1. Synthesize multi-node microservice datacenter traffic in lmshark
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let cap = shark.capture();
+
+# Ingress Gateway (10.40.0.10) <-> Core Services (1.1.1.1 DNS / 162.159.200.1 NTP)
+cap.dns_query(0.002, "10.40.0.10", 51000, "10.40.0.53", 101, "auth.mesh.local", "A");
+cap.dns_response(0.004, "10.40.0.53", "10.40.0.10", 51000, 101, "auth.mesh.local", "A", "10.40.1.20", 0);
+cap.dns_query(0.005, "10.40.0.10", 51001, "10.40.0.53", 102, "api.mesh.local", "A");
+cap.dns_response(0.007, "10.40.0.53", "10.40.0.10", 51001, 102, "api.mesh.local", "A", "10.40.2.30", 0);
+cap.ntp_packet(0.008, "10.40.0.10", 52123, "10.40.0.53", 3, 2, "10.40.0.53", 1700000500.0);
+cap.ntp_packet(0.010, "10.40.0.53", 123, "10.40.0.10", 4, 1, "GPS", 1700000500.1);
+
+# Ingress (10.40.0.10) <-> Auth TLS Service (10.40.1.20:443)
+cap.tcp_handshake(0.012, "10.40.0.10", 42443, "10.40.1.20", 443, 0.004);
+cap.tls_client_hello(0.018, "10.40.0.10", 42443, "10.40.1.20", 443, 1001, 5001, "auth.mesh.local", "1.3", "h2");
+cap.tls_server_hello(0.020, "10.40.1.20", 443, "10.40.0.10", 42443, 5001, 1094, "1.3", "h2", 4865);
+for (i in range(0, 8)) {
+    let ts = 0.025 + float(i) * 0.005;
+    cap.tls_app_data(ts, "10.40.0.10", 42443, "10.40.1.20", 443, 1094 + i * 261, 5090 + i * 517, 256);
+    cap.tls_app_data(ts + 0.002, "10.40.1.20", 443, "10.40.0.10", 42443, 5090 + i * 517, 1094 + (i + 1) * 261, 512);
+}
+
+# Ingress (10.40.0.10) <-> API Core (10.40.2.30:8080) over QUIC + HTTP
+for (i in range(0, 12)) {
+    let ts = 0.070 + float(i) * 0.006;
+    cap.quic_short(ts, "10.40.0.10", 55443, "10.40.2.30", 443, "a1b2c3d4e5f60718", i + 1, 600);
+    cap.quic_short(ts + 0.003, "10.40.2.30", 443, "10.40.0.10", 55443, "a1b2c3d4e5f60718", i + 100, 1100);
+}
+
+# API Core (10.40.2.30) <-> Postgres Primary (10.40.3.40:5432) & Redis Cache (10.40.4.50:6379)
+cap.tcp_handshake(0.150, "10.40.2.30", 48000, "10.40.3.40", 5432, 0.008);
+for (i in range(0, 10)) {
+    let ts = 0.165 + float(i) * 0.008;
+    cap.tcp_segment(ts, "10.40.2.30", 48000, "10.40.3.40", 5432, 1001 + i * 400, 5001 + i * 1200, "PSH,ACK", 64240, "SELECT * FROM orders WHERE tenant_id = 42 LIMIT 100;");
+    cap.tcp_segment(ts + 0.004, "10.40.3.40", 5432, "10.40.2.30", 48000, 5001 + i * 1200, 1053 + i * 400, "PSH,ACK", 65535, "ROW_BATCH_DATA_PAYLOAD_0123456789ABCDEF_0123456789ABCDEF_0123456789ABCDEF");
+}
+
+cap.tcp_handshake(0.260, "10.40.2.30", 49000, "10.40.4.50", 6379, 0.002);
+for (i in range(0, 6)) {
+    let ts = 0.270 + float(i) * 0.004;
+    cap.tcp_segment(ts, "10.40.2.30", 49000, "10.40.4.50", 6379, 1001 + i * 32, 5001 + i * 128, "PSH,ACK", 64240, "GET session:user:9812\r\n");
+    cap.tcp_segment(ts + 0.001, "10.40.4.50", 6379, "10.40.2.30", 49000, 5001 + i * 128, 1024 + i * 32, "PSH,ACK", 65535, "$64\r\n{\"uid\":9812,\"role\":\"admin\",\"region\":\"us-east\"}\r\n");
+}
+
+cap.save_flows_csv("build/examples/pcap/mesh_flows.csv");
+cap.save_top_talkers_csv("build/examples/pcap/mesh_top_talkers.csv");
+assert_eq(cap.unique_hosts(), 6);
+# every number drawn below
+assert_eq(cap.filter("ip.addr == 10.40.0.10").total_bytes(), 29698);
+assert_eq(cap.filter("ip.addr == 10.40.2.30").total_bytes(), 25430);
+assert_eq(cap.filter("ip.addr == 10.40.1.20").total_bytes(), 7516);
+assert_eq(cap.filter("ip.addr == 10.40.3.40").total_bytes(), 2492);
+assert_eq(cap.filter("ip.addr == 10.40.4.50").total_bytes(), 1266);
+assert_eq(cap.filter("ip.addr == 10.40.0.10 && ip.addr == 10.40.2.30").total_bytes(), 21672);
+assert_eq(cap.filter("ip.addr == 10.40.0.53").packet_count(), 6);
+assert_close(cap.tcp_stream_rtt_ms(1), 4.0, 0.05);
+assert_eq(cap.flow_count(), 8);
+end _lmcode_
+savedsl(p, "build/examples/pcap/top_talkers.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/top_talkers.dslb;
+assert(r.code == 0);
+
+# 2. Render Network Flow & Top-Talkers Topology Diagram in lmdraw
+draw = _lmcode_ cli="lmdraw" install="github:lmctl-ai/lmdraw@latest";
+scene.canvas(900, 580, "#0d1520");
+
+scene.text(450.0, 36.0, 22.0, "Service Mesh Flow Topology & Top-Talkers Matrix", "#e6edf3").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(450.0, 58.0, 13.0, "6 active endpoints | 8 L4 conversations dissected by lmshark (QUIC, TLS 1.3, TCP, DNS, NTP)", "#8b949e").set_attr("text-anchor", "middle");
+
+# Edges between nodes (drawn before node boxes so arrowheads meet card borders cleanly)
+# Ingress (x=150,y=280) -> DNS/NTP (x=450,y=125)
+scene.arrow(220.0, 245.0, 355.0, 145.0, "#f2cc60", 2.4);
+scene.text(282.0, 176.0, 12.0, "DNS :53 + NTP :123 (6 pkts)", "#f2cc60").set_attr("text-anchor", "end");
+
+# Ingress (x=150,y=280) -> Auth TLS (x=450,y=280)
+scene.arrow(245.0, 280.0, 352.0, 280.0, "#bc8cff", 3.8);
+scene.text(301.0, 266.0, 12.0, "TLS 1.3 (ALPN=h2)", "#d2a8ff").set_attr("text-anchor", "middle");
+scene.text(301.0, 298.0, 11.0, "21 pkts | 7.5 kB", "#8b949e").set_attr("text-anchor", "middle");
+
+# Ingress (x=150,y=280) -> API Core (x=450,y=440)
+scene.arrow(220.0, 315.0, 355.0, 425.0, "#58a6ff", 5.5);
+scene.text(255.0, 395.0, 12.0, "QUIC 1-RTT (:443)", "#79c0ff").set_attr("text-anchor", "middle");
+scene.text(255.0, 412.0, 11.0, "24 pkts | 21.7 kB", "#8b949e").set_attr("text-anchor", "middle");
+
+# API Core (x=450,y=440) -> Postgres DB (x=755,y=360)
+scene.arrow(545.0, 425.0, 658.0, 375.0, "#3fb950", 4.2);
+scene.text(580.0, 352.0, 12.0, "TCP :5432 SQL", "#56d364").set_attr("text-anchor", "middle");
+scene.text(580.0, 369.0, 11.0, "23 pkts | 4.0 ms RTT", "#8b949e").set_attr("text-anchor", "middle");
+
+# API Core (x=450,y=440) -> Redis Cache (x=755,y=495)
+scene.arrow(545.0, 455.0, 658.0, 490.0, "#ff7b72", 3.0);
+scene.text(590.0, 502.0, 12.0, "TCP :6379 RESP (1.8 ms)", "#ffa198").set_attr("text-anchor", "middle");
+
+# Node 1: Ingress Gateway (Rank #1 Talker)
+scene.rect(55.0, 238.0, 190.0, 84.0, "#162436").set_attr("stroke", "#58a6ff").set_attr("stroke-width", "2.5");
+scene.text(150.0, 262.0, 15.0, "Ingress Gateway", "#58a6ff").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(150.0, 281.0, 12.0, "10.40.0.10 (Rank #1)", "#e6edf3").set_attr("text-anchor", "middle");
+scene.text(150.0, 300.0, 11.0, "51 pkts | 29.7 kB total", "#8b949e").set_attr("text-anchor", "middle");
+
+# Node 2: Core DNS / NTP
+scene.rect(358.0, 86.0, 184.0, 76.0, "#162436").set_attr("stroke", "#f2cc60").set_attr("stroke-width", "2");
+scene.text(450.0, 110.0, 14.0, "Core DNS & NTP", "#f2cc60").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(450.0, 129.0, 12.0, "10.40.0.53 (Rank #6)", "#e6edf3").set_attr("text-anchor", "middle");
+scene.text(450.0, 147.0, 11.0, "6 pkts | Stratum 1 GPS", "#8b949e").set_attr("text-anchor", "middle");
+
+# Node 3: Auth TLS Service
+scene.rect(358.0, 240.0, 184.0, 80.0, "#162436").set_attr("stroke", "#bc8cff").set_attr("stroke-width", "2");
+scene.text(450.0, 264.0, 14.0, "Auth TLS Service", "#d2a8ff").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(450.0, 283.0, 12.0, "10.40.1.20:443 (Rank #3)", "#e6edf3").set_attr("text-anchor", "middle");
+scene.text(450.0, 302.0, 11.0, "21 pkts | SNI=auth.mesh", "#8b949e").set_attr("text-anchor", "middle");
+
+# Node 4: API Core (Rank #2 Talker)
+scene.rect(358.0, 398.0, 184.0, 84.0, "#1b2d44").set_attr("stroke", "#3fb950").set_attr("stroke-width", "3");
+scene.text(450.0, 422.0, 15.0, "API Core (Rank #2)", "#3fb950").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(450.0, 441.0, 12.0, "10.40.2.30 (3 Peers)", "#e6edf3").set_attr("text-anchor", "middle");
+scene.text(450.0, 460.0, 11.0, "62 pkts | 25.4 kB total", "#7ee787").set_attr("text-anchor", "middle");
+
+# Node 5: Postgres Primary
+scene.rect(662.0, 320.0, 188.0, 80.0, "#162436").set_attr("stroke", "#3fb950").set_attr("stroke-width", "2");
+scene.text(756.0, 344.0, 14.0, "Postgres Primary", "#56d364").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(756.0, 363.0, 12.0, "10.40.3.40:5432 (Rank #4)", "#e6edf3").set_attr("text-anchor", "middle");
+scene.text(756.0, 382.0, 11.0, "23 pkts | 2.5 kB SQL", "#8b949e").set_attr("text-anchor", "middle");
+
+# Node 6: Redis Cache
+scene.rect(662.0, 456.0, 188.0, 80.0, "#162436").set_attr("stroke", "#ff7b72").set_attr("stroke-width", "2");
+scene.text(756.0, 480.0, 14.0, "Redis Session Cache", "#ff7b72").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(756.0, 499.0, 12.0, "10.40.4.50:6379 (Rank #5)", "#e6edf3").set_attr("text-anchor", "middle");
+scene.text(756.0, 518.0, 11.0, "15 pkts | 1.3 kB RESP", "#8b949e").set_attr("text-anchor", "middle");
+
+# Summary Legend Card at Top-Right
+scene.rect(630.0, 86.0, 220.0, 118.0, "#111c2a").set_attr("stroke", "#30435c").set_attr("stroke-width", "1.5");
+scene.text(740.0, 108.0, 13.0, "Top Talkers (by Volume)", "#e6edf3").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(644.0, 130.0, 12.0, "1. 10.40.0.10 (Ingress) 29.7 kB", "#79c0ff");
+scene.text(644.0, 149.0, 12.0, "2. 10.40.2.30 (API)     25.4 kB", "#7ee787");
+scene.text(644.0, 168.0, 12.0, "3. 10.40.1.20 (Auth)     7.5 kB", "#d2a8ff");
+scene.text(644.0, 187.0, 12.0, "4. 10.40.3.40 (Postgres) 2.5 kB", "#56d364");
+
+scene.render_png("build/rendered/top_talkers_topology.png", 900, 580, 1);
+end _lmcode_
+savedsl(draw, "build/examples/pcap/top_talkers_draw.dslb");
+rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/top_talkers_draw.dslb;
+assert(rd.code == 0);
+copy_file("build/rendered/top_talkers_topology.png", "images/top_talkers_topology.png");
+copy_file("build/rendered/top_talkers_topology.png", "docs/images/pcap/top_talkers_topology.png");

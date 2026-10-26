@@ -1,0 +1,98 @@
+# Spotting port scans in a branch-office capture. Normal clients open a few TCP sessions;
+# one outside host SYN-scans all 1024 low ports of a server (vertical scan) and another
+# sweeps RDP port 3389 across the /24 (horizontal scan). Counting bare SYNs per source
+# with a display filter separates them instantly, and the SYN-ACK replies reveal exactly
+# which ports answered: 22, 80 and 443 on the server, 3389 on two desktops.
+mkdir("build/examples/pcap");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let c = shark.capture();
+let srv = "10.0.0.25";
+# 1. Ordinary office traffic: 6 clients x 8 HTTPS/SSH sessions spread over 60 s
+for (h in range(0, 6)) {
+    let cli = "10.0.0." + str(101 + h);
+    for (s in range(0, 8)) {
+        let t = 1.0 + float(h) * 0.7 + float(s) * 7.1;
+        let port = 443;
+        if (s % 4 == 3) {
+            port = 22;
+        }
+        c.tcp_handshake(t, cli, 51000 + s, srv, port, 0.0008);
+        c.tcp_close(t + 2.0, cli, 51000 + s, srv, port, 1001, 5001, 0.0008);
+    }
+}
+# 2. Vertical SYN scan from 203.0.113.66: ports 1..1024 in scrambled order, 2 per 50 ms
+let scanner = "203.0.113.66";
+let open_found = 0;
+for (i in range(0, 1024)) {
+    let dport = (i * 389) % 1024 + 1;
+    let t = 12.0 + float(i) * 0.025;
+    c.tcp_segment(t, scanner, 61000, srv, dport, 777000 + i, 0, "SYN", 1024, "");
+    if (dport == 22 || dport == 80 || dport == 443) {
+        c.tcp_segment(t + 0.0004, srv, dport, scanner, 61000, 90000 + i, 777001 + i, "SYN,ACK", 64240, "");
+        c.tcp_segment(t + 0.0008, scanner, 61000, srv, dport, 777001 + i, 0, "RST", 0, "");
+        open_found = open_found + 1;
+    } else {
+        c.tcp_segment(t + 0.0004, srv, dport, scanner, 61000, 0, 777001 + i, "RST,ACK", 0, "");
+    }
+}
+# 3. Horizontal sweep of RDP (3389) across 10.0.0.1-254 from 198.51.100.77, 4 per second
+let sweeper = "198.51.100.77";
+for (i in range(0, 254)) {
+    let dst = "10.0.0." + str(i + 1);
+    let t = 2.0 + float(i) * 0.22;
+    c.tcp_segment(t, sweeper, 40000 + i, dst, 3389, 5000000 + i, 0, "SYN", 1024, "");
+    if (i == 140 || i == 201) {
+        c.tcp_segment(t + 0.001, dst, 3389, sweeper, 40000 + i, 300 + i, 5000001 + i, "SYN,ACK", 64240, "");
+    }
+}
+let bare_syn = "tcp.flags.syn == 1 && tcp.flags.ack == 0";
+assert_eq(open_found, 3);
+assert_eq(c.count(bare_syn + " && ip.src == 203.0.113.66"), 1024);
+assert_eq(c.count(bare_syn + " && ip.src == 198.51.100.77"), 254);
+assert_eq(c.count(bare_syn + " && ip.src == 10.0.0.0/24"), 48);
+assert_eq(c.count("tcp.flags.syn == 1 && tcp.flags.ack == 1 && ip.dst == 203.0.113.66"), 3);
+assert_eq(c.count("tcp.flags.syn == 1 && tcp.flags.ack == 1 && ip.dst == 198.51.100.77"), 2);
+assert_eq(c.count("tcp.flags.reset == 1 && ip.src == 10.0.0.25"), 1021);
+c.save_fields_csv(bare_syn, "frame.time,ip.src,ip.dst,tcp.dstport", "build/examples/pcap/scan_syn.csv");
+c.save_field_counts_csv(bare_syn, "ip.src", "build/examples/pcap/scan_syn_by_src.csv");
+c.save_fields_csv("tcp.flags.syn == 1 && tcp.flags.ack == 1 && ip.dst in {203.0.113.66 198.51.100.77}", "frame.time,ip.src,tcp.srcport", "build/examples/pcap/scan_open.csv");
+end _lmcode_
+savedsl(p, "build/examples/pcap/port_scan_detection.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/port_scan_detection.dslb;
+if (r.code != 0) {
+  print(r.stdout + r.stderr);
+}
+assert(r.code == 0);
+
+plt = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
+plot.png("images/port_scan_detection.png", 960, 560);
+plot.cmd("set datafile separator ','");
+plot.cmd("set multiplot title 'Port-scan detection: bare SYNs per source separate scanners from clients (lmshark display filters)' font ',13'");
+plot.cmd("set linetype 1 lc rgb '#cf222e'; set linetype 2 lc rgb '#bf8700'; set linetype 3 lc rgb '#0969da'");
+plot.cmd("set grid lw 1 lc rgb '#d0d7de'");
+plot.cmd("set size 0.60, 0.92; set origin 0, 0");
+plot.cmd("set title 'Destination port of every bare SYN (tcp.flags.syn == 1 and tcp.flags.ack == 0)' font ',10'");
+plot.cmd("set xlabel 'Capture time (s)'; set ylabel 'Destination port'");
+plot.cmd("set logscale y; set yrange [0.8:9000]; set xrange [0:62]");
+plot.cmd("set key at graph 0.99, graph 0.30 right box opaque font ',9' samplen 1");
+plot.cmd("set label 7 'answered: 22, 80, 443 on 10.0.0.25 | 3389 on 10.0.0.141 and .202' at graph 0.02, graph 0.04 left font ',9' tc rgb '#1a7f37'");
+plot.cmd("plot 'build/examples/pcap/scan_syn.csv' every ::1 using 1:4:(strcol(2) eq '203.0.113.66' ? 1 : (strcol(2) eq '198.51.100.77' ? 2 : 3)) with points pt 7 ps 0.35 lc variable notitle, NaN with points pt 7 ps 1.2 lc 1 title 'vertical scan 203.0.113.66', NaN with points pt 7 ps 1.2 lc 2 title 'RDP sweep 198.51.100.77', NaN with points pt 7 ps 1.2 lc 3 title 'office clients', 'build/examples/pcap/scan_open.csv' every ::1 using 1:3 with points pt 6 ps 2.2 lw 2 lc rgb '#1a7f37' title 'SYN-ACK: port answered'");
+plot.cmd("unset logscale y; unset key; unset label 7");
+plot.cmd("set size 0.40, 0.92; set origin 0.60, 0");
+plot.cmd("set title 'Bare SYNs per source (- - alert 100)' font ',10'");
+plot.cmd("set logscale x; set xrange [1:5000]; set yrange [7.6:-0.6]; set ytics font ',10'");
+plot.cmd("set xlabel 'SYN packets'; set ylabel ''");
+plot.cmd("set style fill solid 0.85 noborder");
+plot.cmd("set arrow 5 from 100, graph 0 to 100, graph 1 nohead dt 2 lw 2 lc rgb '#57606a'");
+plot.cmd("plot 'build/examples/pcap/scan_syn_by_src.csv' every ::1 using (sqrt($2)):0:(1):($2):($0-0.32):($0+0.32):(strcol(1) eq '203.0.113.66' ? 1 : (strcol(1) eq '198.51.100.77' ? 2 : 3)):ytic(1) with boxxyerror lc variable, '' every ::1 using ($2*1.15):0:(sprintf('%d', $2)) with labels left font ',9'");
+plot.cmd("unset multiplot");
+plot.close();
+end _lmcode_
+savedsl(plt, "build/examples/pcap/port_scan_detection_plot.dslb");
+rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/port_scan_detection_plot.dslb;
+assert(rp.code == 0);
+copy_file("images/port_scan_detection.png", "docs/images/pcap/port_scan_detection.png");
+print("wrote images/port_scan_detection.png");

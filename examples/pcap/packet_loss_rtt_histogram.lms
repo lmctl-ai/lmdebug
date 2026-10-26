@@ -1,0 +1,113 @@
+# Fiber vs LTE backup: should the SD-WAN fail over? 500 request/response RPCs per path
+# (stop-and-wait, 512-byte requests). The fiber path has 18 +/- 2 ms RTT and no loss; the
+# LTE path has 45 ms plus a heavy jitter tail and 3 % loss with a 200 ms retransmission
+# timeout. lmshark measures every ACK RTT, skips retransmitted segments (Karn's rule) and
+# its per-stream mean matches the generator's mean to the microsecond.
+mkdir("build/examples/pcap");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let c = shark.capture();
+let req = "";
+for (i in range(0, 512)) {
+    req = req + "q";
+}
+let seed = 777;
+let sum_a = 0.0;
+let sum_b = 0.0;
+let n_b = 0;
+let lost_b = 0;
+for (path in range(0, 2)) {
+    let cli = "10.50.0.7";
+    let srv = "10.8.0.1";
+    let sport = 9000;
+    if (path == 1) {
+        srv = "10.9.0.1";
+        sport = 9001;
+    }
+    let t = 0.1;
+    for (i in range(0, 500)) {
+        let seq = 1000 + i * 512;
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        let u = float(seed) / 2147483648.0;
+        seed = (seed * 1103515245 + 12345) % 2147483648;
+        let v = float(seed) / 2147483648.0;
+        let rtt = 0.018 + 0.004 * (u - 0.5);
+        if (path == 1) {
+            rtt = 0.045 + 0.060 * pow(u, 3.0);
+        }
+        c.tcp_segment(t, cli, 40000 + path, srv, sport, seq, 7001, "PSH,ACK", 64240, req);
+        if (path == 1 && v < 0.03) {
+            # lost: the RTO fires after 200 ms and the retransmission is acknowledged
+            lost_b = lost_b + 1;
+            let tr = t + 0.200;
+            c.tcp_segment(tr, cli, 40000 + path, srv, sport, seq, 7001, "PSH,ACK", 64240, req);
+            c.tcp_segment(tr + rtt, srv, sport, cli, 40000 + path, 7001, seq + 512, "ACK", 65535, "");
+            t = tr + rtt + 0.005;
+        } else {
+            c.tcp_segment(t + rtt, srv, sport, cli, 40000 + path, 7001, seq + 512, "ACK", 65535, "");
+            if (path == 0) {
+                sum_a = sum_a + rtt * 1000.0;
+            } else {
+                sum_b = sum_b + rtt * 1000.0;
+                n_b = n_b + 1;
+            }
+            t = t + rtt + 0.005;
+        }
+    }
+}
+let mean_a = sum_a / 500.0;
+let mean_b = sum_b / float(n_b);
+print("fiber mean " + str(mean_a) + " ms, LTE mean " + str(mean_b) + " ms over " + str(n_b) + " samples, " + str(lost_b) + " losses");
+assert_close(c.tcp_stream_rtt_ms(0), mean_a, 0.001);
+assert_close(c.tcp_stream_rtt_ms(1), mean_b, 0.001);
+assert_eq(c.tcp_stream_retransmissions(1), lost_b);
+assert_eq(c.count("tcp.srcport == 9001 && tcp.analysis.ack_rtt > 0"), n_b);
+assert_eq(c.count("tcp.srcport == 9000 && tcp.analysis.ack_rtt > 0"), 500);
+c.save_fields_csv("tcp.srcport == 9000", "frame.time,tcp.analysis.ack_rtt", "build/examples/pcap/rtt_fiber.csv");
+c.save_fields_csv("tcp.srcport == 9001 && tcp.analysis.ack_rtt > 0", "frame.time,tcp.analysis.ack_rtt", "build/examples/pcap/rtt_lte.csv");
+c.save_fields_csv("tcp.analysis.retransmission", "frame.time", "build/examples/pcap/rtt_lte_rtx.csv");
+end _lmcode_
+savedsl(p, "build/examples/pcap/packet_loss_rtt_histogram.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/packet_loss_rtt_histogram.dslb;
+if (r.code != 0) {
+  print(r.stdout + r.stderr);
+}
+assert(r.code == 0);
+
+plt = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
+plot.png("images/packet_loss_rtt_histogram.png", 960, 540);
+plot.cmd("set datafile separator ','");
+plot.cmd("set multiplot title 'Fiber vs LTE backup: ACK RTT distribution and loss (lmshark tcp.analysis.ack\\_rtt, Karn-filtered)' font ',13'");
+plot.cmd("set grid lw 1 lc rgb '#d0d7de'");
+plot.cmd("stats 'build/examples/pcap/rtt_fiber.csv' every ::1 using 2 nooutput name 'A'");
+plot.cmd("stats 'build/examples/pcap/rtt_lte.csv' every ::1 using 2 nooutput name 'B'");
+plot.cmd("stats 'build/examples/pcap/rtt_lte_rtx.csv' every ::1 using 1 nooutput name 'X'");
+plot.cmd("set size 0.56, 0.92; set origin 0, 0");
+plot.cmd("set title 'RTT histogram (1 ms bins)' font ',11'");
+plot.cmd("set xlabel 'ACK RTT (ms)'; set ylabel 'Samples'");
+plot.cmd("set xrange [10:110]; set yrange [0:175]");
+plot.cmd("set style fill solid 0.75 noborder; set boxwidth 0.9");
+plot.cmd("bin(x) = floor(x) + 0.5");
+plot.cmd("set key top right box opaque font ',10'");
+plot.cmd("set arrow 1 from A_mean, graph 0 to A_mean, graph 1 nohead dt 2 lw 1.5 lc rgb '#1a7f37'");
+plot.cmd("set arrow 2 from B_mean, graph 0 to B_mean, graph 1 nohead dt 2 lw 1.5 lc rgb '#cf222e'");
+plot.cmd("set label 1 sprintf('fiber mean %.2f ms', A_mean) at A_mean + 3.0, 132 font ',9' tc rgb '#1a7f37'");
+plot.cmd("set label 2 sprintf('LTE mean %.2f ms', B_mean) at B_mean + 1.5, 100 font ',9' tc rgb '#cf222e'");
+plot.cmd("plot 'build/examples/pcap/rtt_fiber.csv' every ::1 using (bin($2)):(1) smooth frequency with boxes lc rgb '#2da44e' title sprintf('fiber: %d samples, 0 lost', A_records), 'build/examples/pcap/rtt_lte.csv' every ::1 using (bin($2)):(1) smooth frequency with boxes lc rgb '#cf222e' title sprintf('LTE: %d samples, %d lost (%.1f %%)', B_records, X_records, 100.0*X_records/500.0)");
+plot.cmd("unset arrow 1; unset arrow 2; unset label 1; unset label 2");
+plot.cmd("set size 0.44, 0.92; set origin 0.56, 0");
+plot.cmd("set title 'RTT over time (losses cost a 200 ms RTO)' font ',11'");
+plot.cmd("set xlabel 'Time (s)'; set ylabel 'ACK RTT (ms)'");
+plot.cmd("set xrange [*:*]; set yrange [0:120]");
+plot.cmd("set key bottom right box opaque font ',9' samplen 1");
+plot.cmd("plot 'build/examples/pcap/rtt_fiber.csv' every ::1 using 1:2 with points pt 7 ps 0.3 lc rgb '#2da44e' title 'fiber', 'build/examples/pcap/rtt_lte.csv' every ::1 using 1:2 with points pt 7 ps 0.3 lc rgb '#cf222e' title 'LTE', 'build/examples/pcap/rtt_lte_rtx.csv' every ::1 using 1:(112) with points pt 11 ps 1.2 lc rgb '#57606a' title 'LTE retransmission'");
+plot.cmd("unset multiplot");
+plot.close();
+end _lmcode_
+savedsl(plt, "build/examples/pcap/packet_loss_rtt_histogram_plot.dslb");
+rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/packet_loss_rtt_histogram_plot.dslb;
+assert(rp.code == 0);
+copy_file("images/packet_loss_rtt_histogram.png", "docs/images/pcap/packet_loss_rtt_histogram.png");
+print("wrote images/packet_loss_rtt_histogram.png");

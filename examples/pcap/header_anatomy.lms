@@ -1,0 +1,147 @@
+# Anatomy of one real TCP SYN on the wire: the IPv4 header and the TCP header with its
+# 20 bytes of options, drawn bit-accurately (32 bits per row) with the values lmshark
+# decoded from the frame. Every value drawn is asserted against the dissection first.
+mkdir("build/examples/pcap");
+mkdir("build/rendered");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let c = shark.capture();
+c.set_macs("3c:22:fb:12:34:56", "00:1a:2b:3c:4d:5e");
+c.tcp_segment_opts(0.0, "192.168.1.20", 52100, "93.184.216.34", 443, 3000000000, 0, "SYN", 64240, "mss=1460,sack_perm,ts=4000/0,nop,wscale=7", "");
+assert_eq(c.pkt_len(0), 74);
+assert_eq(c.pkt_field(0, "eth.type"), "2048");
+assert_eq(c.pkt_field(0, "ip.version"), "4");
+assert_eq(c.pkt_field(0, "ip.len"), "60");
+assert_eq(c.pkt_field(0, "ip.id"), "4660");
+assert_eq(c.pkt_field(0, "ip.flags.df"), "1");
+assert_eq(c.pkt_field(0, "ip.frag_offset"), "0");
+assert_eq(c.pkt_field(0, "ip.ttl"), "64");
+assert_eq(c.pkt_field(0, "ip.proto"), "6");
+assert_eq(c.pkt_field(0, "ip.checksum_ok"), "true");
+assert_eq(c.pkt_field(0, "tcp.srcport"), "52100");
+assert_eq(c.pkt_field(0, "tcp.dstport"), "443");
+assert_eq(c.pkt_field(0, "tcp.seq"), "3000000000");
+assert_eq(c.pkt_field(0, "tcp.hdr_len"), "40");
+assert_eq(c.pkt_field(0, "tcp.flags"), "SYN");
+assert_eq(c.pkt_field(0, "tcp.window_size_value"), "64240");
+assert_eq(c.pkt_field(0, "tcp.checksum_ok"), "true");
+assert_eq(c.pkt_field(0, "tcp.options.mss_val"), "1460");
+assert_eq(c.pkt_field(0, "tcp.options.sack_perm"), "1");
+assert_eq(c.pkt_field(0, "tcp.options.timestamp.tsval"), "4000");
+assert_eq(c.pkt_field(0, "tcp.options.timestamp.tsecr"), "0");
+assert_eq(c.pkt_field(0, "tcp.options.wscale.shift"), "7");
+c.save_pcap("build/examples/pcap/header_anatomy.pcap");
+end _lmcode_
+savedsl(p, "build/examples/pcap/header_anatomy.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/header_anatomy.dslb;
+if (r.code != 0) {
+  print(r.stdout + r.stderr);
+}
+assert(r.code == 0);
+
+draw = _lmcode_ cli="lmdraw" install="github:lmctl-ai/lmdraw@latest";
+# one field box: start bit (0..31), row, width in bits, name, value, accent colour
+fn field(b0: int, row: float, nb: int, name: string, val: string, col: string) -> void {
+    let x = 150.0 + 24.0 * float(b0);
+    let w = 24.0 * float(nb);
+    scene.rect(x + 1.0, row + 1.0, w - 2.0, 44.0, "#132235").set_attr("stroke", col).set_attr("stroke-width", "1.5");
+    scene.text(x + w / 2.0, row + 18.0, 11.0, name, "#8b949e").set_attr("text-anchor", "middle");
+    scene.text(x + w / 2.0, row + 36.0, 13.0, val, col).set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+}
+fn rowlabel(row: float, txt: string) -> void {
+    scene.text(140.0, row + 28.0, 11.0, txt, "#6e7681").set_attr("text-anchor", "end");
+}
+scene.canvas(960, 890, "#0d1520");
+scene.text(480.0, 32.0, 21.0, "Header anatomy of a TCP SYN: 74 bytes = 14 Ethernet + 20 IPv4 + 40 TCP", "#e6edf3").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(480.0, 54.0, 12.5, "192.168.1.20:52100 -> 93.184.216.34:443 | each row is 32 bits | values decoded by lmshark from the built frame", "#8b949e").set_attr("text-anchor", "middle");
+# bit ruler
+for (i in range(0, 32)) {
+    let bx = 150.0 + 24.0 * float(i) + 12.0;
+    if (i % 4 == 0 || i == 31) {
+        scene.text(bx, 82.0, 10.0, str(i), "#6e7681").set_attr("text-anchor", "middle");
+    }
+}
+scene.line(150.0, 88.0, 918.0, 88.0, "#30435c", 1.0);
+
+# IPv4 (RFC 791)
+scene.text(150.0, 112.0, 14.0, "IPv4 header (RFC 791) - 20 bytes, checksum verified", "#58a6ff").set_attr("font-weight", "700");
+let y = 120.0;
+rowlabel(y, "bytes 0-3");
+field(0, y, 4, "Version", "4", "#58a6ff");
+field(4, y, 4, "IHL", "5 (20 B)", "#58a6ff");
+field(8, y, 6, "DSCP", "0", "#58a6ff");
+field(14, y, 2, "ECN", "0", "#58a6ff");
+field(16, y, 16, "Total length", "60", "#58a6ff");
+y = y + 46.0;
+rowlabel(y, "4-7");
+field(0, y, 16, "Identification", "0x1234", "#58a6ff");
+field(16, y, 3, "Flags", "DF", "#f2cc60");
+field(19, y, 13, "Fragment offset", "0", "#58a6ff");
+y = y + 46.0;
+rowlabel(y, "8-11");
+field(0, y, 8, "TTL", "64", "#58a6ff");
+field(8, y, 8, "Protocol", "6 (TCP)", "#f2cc60");
+field(16, y, 16, "Header checksum", "ok (RFC 1071)", "#3fb950");
+y = y + 46.0;
+rowlabel(y, "12-15");
+field(0, y, 32, "Source address", "192.168.1.20", "#58a6ff");
+y = y + 46.0;
+rowlabel(y, "16-19");
+field(0, y, 32, "Destination address", "93.184.216.34", "#58a6ff");
+
+# TCP (RFC 9293) + options
+y = y + 70.0;
+scene.text(150.0, y - 8.0, 14.0, "TCP header (RFC 9293) - 20 fixed bytes + 20 bytes of options", "#3fb950").set_attr("font-weight", "700");
+rowlabel(y, "bytes 0-3");
+field(0, y, 16, "Source port", "52100", "#3fb950");
+field(16, y, 16, "Destination port", "443", "#3fb950");
+y = y + 46.0;
+rowlabel(y, "4-7");
+field(0, y, 32, "Sequence number (ISN)", "3000000000", "#3fb950");
+y = y + 46.0;
+rowlabel(y, "8-11");
+field(0, y, 32, "Acknowledgment number", "0 (not valid without ACK)", "#3fb950");
+y = y + 46.0;
+rowlabel(y, "12-15");
+field(0, y, 4, "Offset", "10", "#f2cc60");
+field(4, y, 3, "Rsvd", "0", "#3fb950");
+field(7, y, 9, "Flags (NS..FIN)", "SYN", "#f2cc60");
+field(16, y, 16, "Window", "64240", "#3fb950");
+y = y + 46.0;
+rowlabel(y, "16-19");
+field(0, y, 16, "Checksum", "ok (pseudo-header)", "#3fb950");
+field(16, y, 16, "Urgent pointer", "0", "#3fb950");
+y = y + 46.0;
+rowlabel(y, "20-23");
+field(0, y, 8, "Kind 2", "MSS", "#d2a8ff");
+field(8, y, 8, "Len", "4", "#d2a8ff");
+field(16, y, 16, "MSS value", "1460", "#d2a8ff");
+y = y + 46.0;
+rowlabel(y, "24-27");
+field(0, y, 8, "Kind 4", "SACK_PERM", "#d2a8ff");
+field(8, y, 8, "Len", "2", "#d2a8ff");
+field(16, y, 8, "Kind 8", "Timestamps", "#ff7b72");
+field(24, y, 8, "Len", "10", "#ff7b72");
+y = y + 46.0;
+rowlabel(y, "28-31");
+field(0, y, 32, "TSval", "4000", "#ff7b72");
+y = y + 46.0;
+rowlabel(y, "32-35");
+field(0, y, 32, "TSecr", "0 (no echo yet)", "#ff7b72");
+y = y + 46.0;
+rowlabel(y, "36-39");
+field(0, y, 8, "Kind 1", "NOP", "#8b949e");
+field(8, y, 8, "Kind 3", "Win scale", "#d2a8ff");
+field(16, y, 8, "Len", "3", "#d2a8ff");
+field(24, y, 8, "Shift", "7 (x128)", "#d2a8ff");
+scene.text(480.0, y + 72.0, 12.0, "Offset 10 x 4 = 40-byte TCP header; the receiver multiplies later Window values by 2^7 once both SYNs carry the option.", "#8b949e").set_attr("text-anchor", "middle");
+scene.render_png("build/rendered/header_anatomy.png", 960, 890, 1);
+end _lmcode_
+savedsl(draw, "build/examples/pcap/header_anatomy_draw.dslb");
+rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/header_anatomy_draw.dslb;
+assert(rd.code == 0);
+copy_file("build/rendered/header_anatomy.png", "images/header_anatomy.png");
+copy_file("build/rendered/header_anatomy.png", "docs/images/pcap/header_anatomy.png");
+print("wrote images/header_anatomy.png");

@@ -1,0 +1,117 @@
+mkdir("build/examples/pcap");
+mkdir("build/examples/pcap/io_frames");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+# 1. Build a 6.0-second multi-protocol capture with traffic waves & retransmission spikes
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let cap = shark.capture();
+
+# Continuous DNS & HTTP baseline across [0.0, 6.0] seconds
+for (b in range(0, 60)) {
+    let t = float(b) * 0.10;
+    cap.dns_query(t, "10.0.1.10", 50000 + b, "1.1.1.1", 1000 + b, "svc.lmctl.ai", "A");
+    cap.dns_response(t + 0.008, "1.1.1.1", "10.0.1.10", 50000 + b, 1000 + b, "svc.lmctl.ai", "A", "10.0.2.20", 0);
+
+    # TLS 1.3 wave peaking around t = 1.8 s
+    let dt1 = (t - 1.8) / 0.75;
+    let tls_burst = int(1.0 + 10.0 * pow(2.718281828, -0.5 * dt1 * dt1));
+    for (k in range(0, tls_burst)) {
+        let tk = t + float(k) * 0.004;
+        let seq = 10000 + b * 20000 + k * 900;
+        cap.tls_app_data(tk, "10.0.2.20", 443, "10.0.1.10", 52443, seq, 5001, 860);
+    }
+
+    # QUIC v2 media wave peaking around t = 3.8 s
+    let dt2 = (t - 3.8) / 0.85;
+    let quic_burst = int(1.0 + 13.0 * pow(2.718281828, -0.5 * dt2 * dt2));
+    for (q in range(0, quic_burst)) {
+        let tq = t + 0.002 + float(q) * 0.004;
+        cap.quic_short(tq, "10.0.3.30", 443, "10.0.1.10", 56443, "0102030405060708", b * 20 + q, 980);
+    }
+
+    # Congestion & TCP retransmission spike around t = 4.2 .. 4.9 s
+    if (b >= 40 && b <= 50) {
+        let r_cnt = 6 - abs(b - 45);
+        for (r in range(0, r_cnt)) {
+            let rseq = 900000 + b * 1000;
+            cap.tcp_segment(t + 0.010 + float(r) * 0.003, "10.0.4.40", 8080, "10.0.1.10", 48080, rseq, 1001, "PSH,ACK", 32768, "BURST_PAYLOAD_SEGMENT_WITH_CONGESTION_RETRY_0123456789ABCDEF");
+            # Retransmit identical sequence range 5 ms later
+            cap.tcp_segment(t + 0.015 + float(r) * 0.003, "10.0.4.40", 8080, "10.0.1.10", 48080, rseq, 1001, "PSH,ACK", 32768, "BURST_PAYLOAD_SEGMENT_WITH_CONGESTION_RETRY_0123456789ABCDEF");
+        }
+    }
+}
+
+cap.save_io_graph_csv(0.10, "build/examples/pcap/io_graph.csv");
+assert_eq(cap.retransmission_count() > 25, true);
+end _lmcode_
+savedsl(p, "build/examples/pcap/io_traffic_sweep.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/io_traffic_sweep.dslb;
+assert(r.code == 0);
+
+# 2. Render static dual-panel I/O Graph in lmplot
+plt = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
+plot.png("images/io_traffic_burst.png", 900, 580);
+plot.cmd("set datafile separator ','");
+plot.cmd("set grid lw 1 lc rgb '#d0d7de'");
+plot.cmd("set multiplot layout 2,1 title 'Multi-Protocol I/O Throughput and Congestion Retransmission Analysis (lmshark)' font ',13'");
+
+plot.cmd("set size 1.0, 0.58");
+plot.cmd("set origin 0.0, 0.38");
+plot.cmd("set xlabel ''");
+plot.cmd("set ylabel 'Protocol Bytes / 100 ms'");
+plot.cmd("set xrange [0:6.0]");
+plot.cmd("set key top left box opaque");
+plot.cmd("plot 'build/examples/pcap/io_graph.csv' every ::1 using 1:11 with filledcurves y1=0 lc rgb '#2ea043' fs transparent solid 0.35 title 'QUIC v2 (UDP :443)', '' every ::1 using 1:11 with lines lw 2.2 lc rgb '#2ea043' notitle, '' every ::1 using 1:10 with filledcurves y1=0 lc rgb '#8957e5' fs transparent solid 0.35 title 'TLS 1.3 (TCP :443)', '' every ::1 using 1:10 with lines lw 2.2 lc rgb '#8957e5' notitle, '' every ::1 using 1:8 with lines lw 2.0 lc rgb '#d29922' title 'DNS Baseline'");
+
+plot.cmd("set size 1.0, 0.38");
+plot.cmd("set origin 0.0, 0.0");
+plot.cmd("set xlabel 'Capture Time (s)'");
+plot.cmd("set ylabel 'Total Mbps'");
+plot.cmd("set y2label 'Retransmissions / 100 ms'");
+plot.cmd("set ytics nomirror");
+plot.cmd("set y2tics 0, 2, 10");
+plot.cmd("set y2range [0:10]");
+plot.cmd("set xrange [0:6.0]");
+plot.cmd("set key top left box opaque");
+plot.cmd("plot 'build/examples/pcap/io_graph.csv' every ::1 using 1:4 axes x1y1 with lines lw 2.4 lc rgb '#0969da' title 'Aggregate Throughput (Mbps)', '' every ::1 using 1:12 axes x1y2 with boxes lc rgb '#cf222e' fs solid 0.65 title 'TCP Retransmission Spike'");
+plot.cmd("unset multiplot");
+plot.close();
+end _lmcode_
+savedsl(plt, "build/examples/pcap/io_static_plot.dslb");
+rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/io_static_plot.dslb;
+assert(rp.code == 0);
+copy_file("images/io_traffic_burst.png", "docs/images/pcap/io_traffic_burst.png");
+
+# 3. Render 24 preview frames; the standard-library helper below packages the same sweep.
+anim = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
+for (f in range(0, 24)) {
+    let t_end = 0.60 + float(f) * (5.40 / 23.0);
+    plot.cmd("reset");
+    plot.png("build/examples/pcap/io_frames/frame_" + str(f) + ".png", 800, 480);
+    plot.cmd("set datafile separator ','");
+    plot.cmd("set grid lw 1 lc rgb '#d0d7de'");
+    plot.cmd("set title 'Live Packet Capture I/O Sweep: TLS 1.3 Wave -> QUIC v2 Burst -> TCP Congestion (t = " + str(float(int(t_end * 10.0)) / 10.0) + " s)' font ',12'");
+    plot.cmd("set xlabel 'Capture Time (s)'");
+    plot.cmd("set ylabel 'Bytes per 100 ms Bucket'");
+    plot.cmd("set y2label 'TCP Retransmissions'");
+    plot.cmd("set ytics nomirror");
+    plot.cmd("set y2tics 0, 2, 10");
+    plot.cmd("set xrange [0:6.0]");
+    plot.cmd("set yrange [0:16000]");
+    plot.cmd("set y2range [0:10]");
+    plot.cmd("set key top left box opaque");
+    plot.cmd("set arrow 1 from " + str(t_end) + ",0 to " + str(t_end) + ",16000 nohead lw 2 dt 2 lc rgb '#cf222e'");
+    plot.cmd("plot 'build/examples/pcap/io_graph.csv' every ::1 using ($1 <= " + str(t_end) + " ? $1 : 1/0):11 axes x1y1 with filledcurves y1=0 lc rgb '#2ea043' fs transparent solid 0.35 title 'QUIC v2 Bytes', '' every ::1 using ($1 <= " + str(t_end) + " ? $1 : 1/0):10 axes x1y1 with filledcurves y1=0 lc rgb '#8957e5' fs transparent solid 0.35 title 'TLS 1.3 Bytes', '' every ::1 using ($1 <= " + str(t_end) + " ? $1 : 1/0):5 axes x1y1 with lines lw 2.2 lc rgb '#0969da' title 'Total TCP Bytes', '' every ::1 using ($1 <= " + str(t_end) + " ? $1 : 1/0):12 axes x1y2 with impulses lw 5 lc rgb '#cf222e' title 'Retransmissions'");
+    plot.close();
+}
+end _lmcode_
+savedsl(anim, "build/examples/pcap/io_anim_plot.dslb");
+ra = system ${dsl_cli(anim)} --dsl build/examples/pcap/io_anim_plot.dslb;
+assert(ra.code == 0);
+
+# Package the frames with the original standard-library-only example helper.
+write_file("build/examples/pcap/png_gif.py", "#!/usr/bin/env python3\n# Original example helper, Copyright (c) 2026 Lattice Systems LLC.\n# Uses only Python's standard library; no packet or image library is linked.\n\"\"\"Join lmplot's 8-bit, non-interlaced PNG frames into a GIF89a animation.\n\nThe fixed RGB332 palette and early LZW clears keep every code nine bits wide.\nFormat reference: https://www.w3.org/Graphics/GIF/spec-gif89a.txt\n\"\"\"\nimport struct\nimport sys\nimport zlib\nfrom pathlib import Path\n\n\ndef png_pixels(path):\n    data = path.read_bytes()\n    if data[:8] != b'\\x89PNG\\r\\n\\x1a\\n':\n        raise ValueError('not a PNG frame')\n    pos, compressed, palette = 8, bytearray(), b''\n    while pos < len(data):\n        length = int.from_bytes(data[pos:pos + 4], 'big')\n        kind, body = data[pos + 4:pos + 8], data[pos + 8:pos + 8 + length]\n        if kind == b'IHDR':\n            width, height, depth, color, method, filtering, interlace = struct.unpack('>IIBBBBB', body)\n        elif kind == b'IDAT':\n            compressed.extend(body)\n        elif kind == b'PLTE':\n            palette = body\n        pos += length + 12\n    if depth != 8 or color not in (2, 3, 6) or interlace or method or filtering:\n        raise ValueError('expected an 8-bit non-interlaced RGB, indexed or RGBA PNG')\n    channels = {2: 3, 3: 1, 6: 4}[color]\n    stride = width * channels\n    raw, offset, previous, pixels = zlib.decompress(compressed), 0, bytearray(stride), bytearray()\n    if len(raw) != height * (stride + 1):\n        raise ValueError('invalid PNG scanline size')\n    for _ in range(height):\n        filter_type = raw[offset]\n        row = bytearray(raw[offset + 1:offset + stride + 1])\n        offset += stride + 1\n        if filter_type not in range(5):\n            raise ValueError('unknown PNG filter')\n        for i in range(stride):\n            left = row[i - channels] if i >= channels else 0\n            above = previous[i]\n            upper_left = previous[i - channels] if i >= channels else 0\n            predictor = 0\n            if filter_type == 1:\n                predictor = left\n            elif filter_type == 2:\n                predictor = above\n            elif filter_type == 3:\n                predictor = (left + above) // 2\n            elif filter_type == 4:\n                p = left + above - upper_left\n                distances = (abs(p - left), abs(p - above), abs(p - upper_left))\n                predictor = (left, above, upper_left)[distances.index(min(distances))]\n            row[i] = (row[i] + predictor) & 255\n        for i in range(0, stride, channels):\n            if color == 3:\n                j = row[i] * 3\n                red, green, blue = palette[j:j + 3]\n            else:\n                red, green, blue = row[i:i + 3]\n                if color == 6:\n                    alpha = row[i + 3]\n                    red, green, blue = ((v * alpha + 255 * (255 - alpha)) // 255 for v in (red, green, blue))\n            pixels.append((red & 224) | ((green & 224) >> 3) | (blue >> 6))\n        previous = row\n    return width, height, pixels\n\n\ndef lzw(pixels):\n    output, bits, count = bytearray(), 0, 0\n\n    def emit(code):\n        nonlocal bits, count\n        bits |= code << count\n        count += 9\n        while count >= 8:\n            output.append(bits & 255)\n            bits >>= 8\n            count -= 8\n\n    emit(256)\n    table, next_code, current = {}, 258, pixels[0]\n    for pixel in pixels[1:]:\n        pair = current, pixel\n        if pair in table:\n            current = table[pair]\n        else:\n            emit(current)\n            if next_code < 500:\n                table[pair] = next_code\n                next_code += 1\n            else:\n                emit(256)\n                table, next_code = {}, 258\n            current = pixel\n    emit(current)\n    emit(257)\n    if count:\n        output.append(bits & 255)\n    return output\n\n\ndef main(directory, destination, count=24):\n    frames = [Path(directory) / ('frame_' + str(i) + '.png') for i in range(count)]\n    width, height, _ = png_pixels(frames[0])\n    palette = bytes(v for i in range(256) for v in ((i >> 5) * 255 // 7, ((i >> 2) & 7) * 255 // 7, (i & 3) * 255 // 3))\n    with Path(destination).open('wb') as output:\n        output.write(b'GIF89a' + struct.pack('<HHBBB', width, height, 247, 0, 0) + palette)\n        output.write(b'!\\xff\\x0bNETSCAPE2.0\\x03\\x01\\x00\\x00\\x00')\n        for frame in frames:\n            w, h, pixels = png_pixels(frame)\n            if (w, h) != (width, height):\n                raise ValueError('animation frames must have the same dimensions')\n            output.write(b'!\\xf9\\x04\\x00\\x0a\\x00\\x00\\x00')\n            output.write(b',' + struct.pack('<HHHHB', 0, 0, width, height, 0) + b'\\x08')\n            encoded = lzw(pixels)\n            for pos in range(0, len(encoded), 255):\n                block = encoded[pos:pos + 255]\n                output.write(bytes([len(block)]) + block)\n            output.write(b'\\x00')\n        output.write(b';')\n\n\nif __name__ == '__main__':\n    main(sys.argv[1], sys.argv[2])\n");
+rgif = system python3 build/examples/pcap/png_gif.py build/examples/pcap/io_frames images/io_traffic_sweep.gif;
+assert(rgif.code == 0);
+copy_file("images/io_traffic_sweep.gif", "docs/images/pcap/io_traffic_sweep.gif");

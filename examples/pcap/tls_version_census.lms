@@ -1,0 +1,118 @@
+# TLS version census before switching off TLS 1.0/1.1 on the corporate proxy. One hour of
+# handshakes (compressed into 60 s) from laptops, app servers and building devices: lmshark
+# reads the version each ClientHello offers and the version each ServerHello negotiates,
+# counts them with save_field_counts_csv, and lists exactly which devices and SNI names
+# would break: a printer, an HVAC controller and a NAS. It also finds the intranet server
+# that drags TLS 1.3-capable laptops down to TLS 1.2.
+mkdir("build/examples/pcap");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let c = shark.capture();
+let n13 = 0;
+let n12 = 0;
+let nlegacy = 0;
+let t = 0.0;
+let port = 40000;
+fn conn(c: Capture, t: float, cli: string, port: int, srv: string, sni: string, offer: string, got: string) -> void {
+    c.tcp_handshake(t, cli, port, srv, 443, 0.004);
+    c.tls_client_hello(t + 0.0045, cli, port, srv, 443, 1001, 5001, sni, offer, "");
+    c.tls_server_hello(t + 0.0085, srv, 443, cli, port, 5001, 1300, got, "", 4865);
+}
+for (i in range(0, 180)) {
+    let cli = "10.1.0." + str(10 + i % 30);
+    t = t + 0.25;
+    port = port + 1;
+    let k = i % 6;
+    if (k == 0) {
+        conn(c, t, cli, port, "198.51.100.10", "mail.example.com", "1.3", "1.3");
+        n13 = n13 + 1;
+    }
+    if (k == 1) {
+        conn(c, t, cli, port, "198.51.100.20", "docs.example.com", "1.3", "1.3");
+        n13 = n13 + 1;
+    }
+    if (k == 2) {
+        conn(c, t, cli, port, "198.51.100.30", "chat.example.com", "1.3", "1.3");
+        n13 = n13 + 1;
+    }
+    if (k == 3 || k == 4) {
+        conn(c, t, cli, port, "198.51.100.40", "cdn.example.com", "1.3", "1.3");
+        n13 = n13 + 1;
+    }
+    if (k == 5) {
+        conn(c, t, cli, port, "10.1.5.20", "intranet.corp.example", "1.3", "1.2");
+        n12 = n12 + 1;
+    }
+}
+for (i in range(0, 40)) {
+    t = t + 0.2;
+    port = port + 1;
+    conn(c, t, "10.1.2." + str(30 + i % 8), port, "10.1.5.40", "payments.corp.example", "1.2", "1.2");
+    n12 = n12 + 1;
+}
+for (i in range(0, 6)) {
+    t = t + 1.0;
+    port = port + 1;
+    conn(c, t, "10.1.9.5", port, "203.0.113.80", "print-cloud.vendor.example", "1.0", "1.0");
+    conn(c, t + 0.3, "10.1.9.7", port, "203.0.113.90", "bms.vendor.example", "1.1", "1.1");
+    nlegacy = nlegacy + 2;
+}
+conn(c, t + 2.0, "10.1.9.9", port + 1, "203.0.113.70", "backup.vendor.example", "1.0", "1.0");
+nlegacy = nlegacy + 1;
+
+let ch = "tls.handshake.type == 1";
+let sh = "tls.handshake.type == 2";
+assert_eq(c.count(ch), n13 + n12 + nlegacy);
+assert_eq(c.count(sh + " && tls.version == \"TLS 1.3\""), n13);
+assert_eq(c.count(sh + " && tls.version == \"TLS 1.2\""), n12);
+assert_eq(c.count(sh + " && tls.version in {\"TLS 1.0\" \"TLS 1.1\"}"), nlegacy);
+assert_eq(c.count(ch + " && tls.version == \"TLS 1.3\" && tls.sni == \"intranet.corp.example\""), 30);
+assert_eq(n13, 150);
+assert_eq(nlegacy, 13);
+c.save_field_counts_csv(ch, "tls.version", "build/examples/pcap/tls_offered.csv");
+c.save_field_counts_csv(sh, "tls.version", "build/examples/pcap/tls_negotiated.csv");
+c.save_field_counts_csv(ch + " && tls.version in {\"TLS 1.0\" \"TLS 1.1\"}", "tls.sni", "build/examples/pcap/tls_legacy_sni.csv");
+c.save_fields_csv(ch + " && tls.version in {\"TLS 1.0\" \"TLS 1.1\"}", "ip.src,tls.sni,tls.version", "build/examples/pcap/tls_legacy.csv");
+end _lmcode_
+savedsl(p, "build/examples/pcap/tls_version_census.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/tls_version_census.dslb;
+if (r.code != 0) {
+  print(r.stdout + r.stderr);
+}
+assert(r.code == 0);
+
+plt = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
+plot.png("images/tls_version_census.png", 960, 520);
+plot.cmd("set datafile separator ','");
+plot.cmd("set multiplot title 'TLS version census: what clients offer vs what servers negotiate (233 handshakes, lmshark)' font ',13'");
+plot.cmd("vy(s) = (s eq 'TLS 1.3' ? 0 : (s eq 'TLS 1.2' ? 1 : (s eq 'TLS 1.1' ? 2 : 3)))");
+plot.cmd("set size 0.55, 0.92; set origin 0, 0");
+plot.cmd("set title 'Handshakes per TLS version' font ',11'");
+plot.cmd("set grid x lw 1 lc rgb '#d0d7de'");
+plot.cmd("set yrange [3.6:-0.6]; set xrange [0:215]");
+plot.cmd("set ytics ('TLS 1.3' 0, 'TLS 1.2' 1, 'TLS 1.1' 2, 'TLS 1.0' 3) font ',11'");
+plot.cmd("set xlabel 'Handshakes'");
+plot.cmd("set style fill solid 0.88 noborder");
+plot.cmd("set key bottom right box opaque font ',10' samplen 2");
+plot.cmd("plot 'build/examples/pcap/tls_offered.csv' every ::1 using ($2/2.0):(vy(strcol(1)) - 0.19):($2/2.0):(0.17) with boxxyerror lc rgb '#8c959f' title 'offered (ClientHello)', 'build/examples/pcap/tls_negotiated.csv' every ::1 using ($2/2.0):(vy(strcol(1)) + 0.19):($2/2.0):(0.17) with boxxyerror lc rgb '#0969da' title 'negotiated (ServerHello)', 'build/examples/pcap/tls_offered.csv' every ::1 using ($2 + 3):(vy(strcol(1)) - 0.19):(sprintf('%d', $2)) with labels left font ',9' notitle, 'build/examples/pcap/tls_negotiated.csv' every ::1 using ($2 + 3):(vy(strcol(1)) + 0.19):(sprintf('%d', $2)) with labels left font ',9' tc rgb '#0969da' notitle");
+plot.cmd("set size 0.45, 0.92; set origin 0.55, 0");
+plot.cmd("unset key; unset grid; unset tics; unset border; unset xlabel");
+plot.cmd("set title 'Breaks when TLS < 1.2 is switched off' font ',11'");
+plot.cmd("set xrange [0:10]; set yrange [10:0]");
+plot.cmd("set label 21 'SNI (ClientHellos)' at 0.3, 0.8 font ',10'");
+plot.cmd("set label 22 'devices: 10.1.9.5 printer (TLS 1.0)' at 0.3, 5.2 font ',10'");
+plot.cmd("set label 23 '10.1.9.7 HVAC controller (TLS 1.1)' at 1.15, 6.0 font ',10'");
+plot.cmd("set label 24 '10.1.9.9 NAS backup (TLS 1.0)' at 1.15, 6.8 font ',10'");
+plot.cmd("set label 25 'Also: intranet.corp.example holds 30' at 0.3, 8.4 font ',10' tc rgb '#9a6700'");
+plot.cmd("set label 26 'TLS 1.3-capable laptops at TLS 1.2' at 0.3, 9.2 font ',10' tc rgb '#9a6700'");
+plot.cmd("plot 'build/examples/pcap/tls_legacy_sni.csv' every ::1 using (0.3):(1.7 + 0.9*$0):(sprintf('%s  (%d)', strcol(1), $2)) with labels left font ',10' tc rgb '#cf222e'");
+plot.cmd("unset multiplot");
+plot.close();
+end _lmcode_
+savedsl(plt, "build/examples/pcap/tls_version_census_plot.dslb");
+rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/tls_version_census_plot.dslb;
+assert(rp.code == 0);
+copy_file("images/tls_version_census.png", "docs/images/pcap/tls_version_census.png");
+print("wrote images/tls_version_census.png");

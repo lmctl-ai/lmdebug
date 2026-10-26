@@ -1,0 +1,111 @@
+# A web page fetch seen from the client: TCP three-way handshake with real options
+# (MSS, SACK, timestamps, window scale), one HTTP GET/200, then the four-way FIN teardown.
+# lmshark builds and dissects the frames; every number drawn on the ladder is asserted first.
+mkdir("build/examples/pcap");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let c = shark.capture();
+let ci = "192.168.1.20";
+let si = "93.184.216.34";
+let body = "<!doctype html><title>Example Domain</title>";
+for (i in range(0, 20)) {
+    body = body + "<p>This domain is for use in illustrative examples in documents.</p>";
+}
+# Client ISN 3000000000, server ISN 1200000000, 30 ms path RTT
+c.tcp_segment_opts(0.0000, ci, 52100, si, 80, 3000000000, 0, "SYN", 64240, "mss=1460,sack_perm,ts=4000/0,nop,wscale=7", "");
+c.tcp_segment_opts(0.0300, si, 80, ci, 52100, 1200000000, 3000000001, "SYN,ACK", 65160, "mss=1440,sack_perm,ts=9000/4000,nop,wscale=9", "");
+c.tcp_segment(0.0302, ci, 52100, si, 80, 3000000001, 1200000001, "ACK", 502, "");
+c.http_request(0.0305, ci, 52100, si, 80, 3000000001, 1200000001, "GET", "/index.html", "example.com", "");
+c.http_response(0.0610, si, 80, ci, 52100, 1200000001, 3000000073, 200, "OK", "text/html", body);
+c.tcp_segment(0.0612, ci, 52100, si, 80, 3000000073, 1200001471, "ACK", 501, "");
+c.tcp_segment(0.1000, ci, 52100, si, 80, 3000000073, 1200001471, "FIN,ACK", 501, "");
+c.tcp_segment(0.1300, si, 80, ci, 52100, 1200001471, 3000000074, "ACK", 127, "");
+c.tcp_segment(0.1310, si, 80, ci, 52100, 1200001471, 3000000074, "FIN,ACK", 127, "");
+c.tcp_segment(0.1312, ci, 52100, si, 80, 3000000074, 1200001472, "ACK", 501, "");
+
+# Everything the diagram shows, checked against the dissection
+assert_eq(c.packet_count(), 10);
+assert_eq(c.tcp_stream_count(), 1);
+assert_eq(c.pkt_field(0, "tcp.options.mss_val"), "1460");
+assert_eq(c.pkt_field(0, "tcp.options.wscale.multiplier"), "128");
+assert_eq(c.pkt_field(1, "tcp.options.mss_val"), "1440");
+assert_eq(c.pkt_field(1, "tcp.options.wscale.multiplier"), "512");
+assert_eq(c.pkt_field(1, "tcp.analysis.ack_rtt"), "30.000");
+assert_eq(c.pkt_field(2, "tcp.window_size"), "64256");
+assert_eq(c.pkt_field(3, "tcp.len"), "72");
+assert_eq(c.pkt_field(4, "tcp.len"), "1470");
+assert_eq(c.pkt_field(4, "http.status"), "200");
+assert_eq(c.pkt_field(4, "tcp.analysis.ack_rtt"), "30.500");
+assert_eq(c.pkt_field(5, "tcp.rel_ack"), "1471");
+assert_eq(c.pkt_field(6, "tcp.rel_seq"), "73");
+assert_eq(c.pkt_field(7, "tcp.rel_ack"), "74");
+assert_eq(c.pkt_field(8, "tcp.rel_seq"), "1471");
+assert_eq(c.pkt_field(9, "tcp.rel_ack"), "1472");
+assert_eq(c.tcp_stream_bytes(0, "client"), 72);
+assert_eq(c.tcp_stream_bytes(0, "server"), 1470);
+assert_eq(c.count("tcp.flags.fin == 1"), 2);
+assert_eq(c.retransmission_count(), 0);
+c.save_pcapng("build/examples/pcap/tcp_handshake_teardown.pcapng");
+end _lmcode_
+savedsl(p, "build/examples/pcap/tcp_handshake_teardown.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/tcp_handshake_teardown.dslb;
+assert(r.code == 0);
+
+draw = _lmcode_ cli="lmdraw" install="github:lmctl-ai/lmdraw@latest";
+fn c2s(y: float, col: string, t: string, label: string, sub: string) -> void {
+    scene.arrow(250.0, y, 784.0, y + 22.0, col, 2.2);
+    scene.text(150.0, y + 4.0, 11.5, t, "#8b949e").set_attr("text-anchor", "end");
+    scene.text(520.0, y - 17.0, 12.5, label, col).set_attr("text-anchor", "middle");
+    scene.text(520.0, y - 3.0, 10.5, sub, "#8b949e").set_attr("text-anchor", "middle");
+}
+fn s2c(y: float, col: string, t: string, label: string, sub: string) -> void {
+    scene.arrow(790.0, y, 256.0, y + 22.0, col, 2.2);
+    scene.text(890.0, y + 4.0, 11.5, t, "#8b949e").set_attr("text-anchor", "start");
+    scene.text(520.0, y - 17.0, 12.5, label, col).set_attr("text-anchor", "middle");
+    scene.text(520.0, y - 3.0, 10.5, sub, "#8b949e").set_attr("text-anchor", "middle");
+}
+scene.canvas(960, 790, "#0d1520");
+scene.text(480.0, 34.0, 21.0, "TCP connection lifecycle: handshake, one HTTP exchange, FIN teardown", "#e6edf3").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(480.0, 56.0, 12.5, "10 frames built and dissected by lmshark | relative seq/ack as Wireshark shows them | RTT 30 ms", "#8b949e").set_attr("text-anchor", "middle");
+
+let xc = 250.0;
+let xs = 790.0;
+scene.rect(xc - 95.0, 72.0, 190.0, 46.0, "#162436").set_attr("stroke", "#58a6ff").set_attr("stroke-width", "2");
+scene.text(xc, 92.0, 14.0, "Client", "#58a6ff").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(xc, 110.0, 12.0, "192.168.1.20:52100", "#c9d1d9").set_attr("text-anchor", "middle");
+scene.rect(xs - 95.0, 72.0, 190.0, 46.0, "#162436").set_attr("stroke", "#3fb950").set_attr("stroke-width", "2");
+scene.text(xs, 92.0, 14.0, "Web server", "#3fb950").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(xs, 110.0, 12.0, "93.184.216.34:80", "#c9d1d9").set_attr("text-anchor", "middle");
+
+# phase bands
+scene.rect(20.0, 130.0, 920.0, 190.0, "#111c2a").set_attr("stroke", "#24354a");
+scene.rect(20.0, 328.0, 920.0, 186.0, "#111c2a").set_attr("stroke", "#24354a");
+scene.rect(20.0, 522.0, 920.0, 256.0, "#111c2a").set_attr("stroke", "#24354a");
+scene.text(30.0, 148.0, 12.0, "3-way handshake", "#3fb950").set_attr("font-weight", "700");
+scene.text(30.0, 346.0, 12.0, "HTTP request/response", "#ff7b72").set_attr("font-weight", "700");
+scene.text(30.0, 540.0, 12.0, "4-way teardown", "#d2a8ff").set_attr("font-weight", "700");
+scene.line(xc, 118.0, xc, 778.0, "#30435c", 2.0);
+scene.line(xs, 118.0, xs, 778.0, "#30435c", 2.0);
+
+# rows: y0 (sender side) -> y1 (receiver side) slopes with time
+c2s(178.0, "#56d364", "0.0 ms", "[SYN] Seq=0 Win=64240", "MSS=1460  SACK_PERM  TSval=4000  WS=128");
+s2c(234.0, "#7ee787", "30.0 ms", "[SYN, ACK] Seq=0 Ack=1 Win=65160", "MSS=1440  SACK_PERM  TSecr=4000  WS=512  | ack RTT 30.0 ms");
+c2s(290.0, "#56d364", "30.2 ms", "[ACK] Seq=1 Ack=1 Win=502 (x128 = 64256)", "window scaling now active in both directions");
+c2s(384.0, "#ffa198", "30.5 ms", "GET /index.html  Seq=1 Ack=1 Len=72", "Host: example.com");
+s2c(440.0, "#ff7b72", "61.0 ms", "HTTP/1.1 200 OK  Seq=1 Ack=73 Len=1470", "text/html, acknowledges the GET (RTT 30.5 ms)");
+c2s(496.0, "#ffa198", "61.2 ms", "[ACK] Seq=73 Ack=1471", "client has all 1470 response bytes");
+c2s(578.0, "#d2a8ff", "100.0 ms", "[FIN, ACK] Seq=73 Ack=1471", "client closes: FIN consumes one sequence number");
+s2c(634.0, "#e2c5ff", "130.0 ms", "[ACK] Seq=1471 Ack=74", "half-closed: server may still send");
+s2c(690.0, "#e2c5ff", "131.0 ms", "[FIN, ACK] Seq=1471 Ack=74", "server closes its direction");
+c2s(746.0, "#d2a8ff", "131.2 ms", "[ACK] Seq=74 Ack=1472", "client enters TIME_WAIT (2 x MSL)");
+scene.render_png("build/rendered/tcp_handshake_teardown.png", 960, 790, 1);
+end _lmcode_
+mkdir("build/rendered");
+savedsl(draw, "build/examples/pcap/tcp_handshake_teardown_draw.dslb");
+rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/tcp_handshake_teardown_draw.dslb;
+assert(rd.code == 0);
+copy_file("build/rendered/tcp_handshake_teardown.png", "images/tcp_handshake_teardown.png");
+copy_file("build/rendered/tcp_handshake_teardown.png", "docs/images/pcap/tcp_handshake_teardown.png");
+print("wrote images/tcp_handshake_teardown.png");

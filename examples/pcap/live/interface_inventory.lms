@@ -1,0 +1,41 @@
+# Live-capable example: enumerate interfaces without opening a capture handle.
+mkdir("build/examples/pcap/live");
+mkdir("images");
+mkdir("docs/images/pcap/live");
+
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let rows = "name,description,addresses,up,loopback\n";
+let devices = shark.interfaces();
+for (i in range(0, devices.len())) {
+    let d = devices.at(i);
+    let up = 0;
+    let loopback = 0;
+    if (d.up()) { up = 1; }
+    if (d.loopback()) { loopback = 1; }
+    let description = str_replace(str_replace(d.description(), "\"", "''"), "\n", " ");
+    let addresses = str_replace(str_replace(d.addresses(), "\"", "''"), "\n", " ");
+    rows = rows + d.name() + ",\"" + description + "\",\"" + addresses + "\"," +
+           str(up) + "," + str(loopback) + "\n";
+}
+assert_eq(devices.len() > 0, true);
+file_write("build/examples/pcap/live/interface_inventory.csv", rows);
+print("interfaces=" + str(devices.len()));
+end _lmcode_
+savedsl(p, "build/examples/pcap/live/interface_inventory.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/live/interface_inventory.dslb;
+assert(r.code == 0);
+
+plt = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
+plot.png("images/interface_inventory.png", 960, 540);
+plot.cmd("set datafile separator ','");
+plot.cmd("set title 'Live interfaces visible to lmdebug pcap'");
+plot.cmd("set xlabel 'Interface'; set ylabel 'flag (1=true)'");
+plot.cmd("set yrange [0:1.2]; set ytics 0,1; set grid ytics");
+plot.cmd("set style data histograms; set style histogram cluster gap 1; set style fill solid 0.8 border -1; set xtics rotate by -40");
+plot.cmd("plot 'build/examples/pcap/live/interface_inventory.csv' every ::1 using 4:xtic(1) title 'up', '' every ::1 using 5 title 'loopback'");
+plot.close();
+end _lmcode_
+savedsl(plt, "build/examples/pcap/live/interface_inventory_plot.dslb");
+rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/live/interface_inventory_plot.dslb;
+assert(rp.code == 0);
+copy_file("images/interface_inventory.png", "docs/images/pcap/live/interface_inventory.png");

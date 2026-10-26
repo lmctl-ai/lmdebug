@@ -1,0 +1,123 @@
+mkdir("build");
+mkdir("build/examples/pcap");
+mkdir("build/rendered");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+# 1. Build and dissect a complete multi-layer exchange in lmshark
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let cap = shark.capture();
+
+# ARP resolution for default gateway
+cap.arp_request(0.001, "02:10:20:30:40:01", "10.10.1.15", "10.10.1.1");
+cap.arp_reply(0.002, "02:10:20:30:40:fe", "10.10.1.1", "02:10:20:30:40:01", "10.10.1.15");
+
+# DNS A-record lookup to 1.1.1.1
+cap.dns_query(0.005, "10.10.1.15", 53210, "1.1.1.1", 18975, "api.lmctl.ai", "A");
+cap.dns_response(0.014, "1.1.1.1", "10.10.1.15", 53210, 18975, "api.lmctl.ai", "A", "93.184.216.34", 0);
+
+# TCP 3-way handshake to resolved IP 93.184.216.34:443 (16 ms RTT)
+cap.tcp_handshake(0.016, "10.10.1.15", 51443, "93.184.216.34", 443, 0.016);
+
+# TLS 1.3 handshake with SNI and ALPN=h2
+cap.tls_client_hello(0.035, "10.10.1.15", 51443, "93.184.216.34", 443, 1001, 5001, "api.lmctl.ai", "1.3", "h2");
+cap.tls_server_hello(0.044, "93.184.216.34", 443, "10.10.1.15", 51443, 5001, 1094, "1.3", "h2", 4865);
+
+# HTTP/1.1 trace over diagnostic port 8080 for clear payload reassembly
+cap.tcp_handshake(0.050, "10.10.1.15", 51080, "93.184.216.34", 8080, 0.016);
+cap.http_request(0.068, "10.10.1.15", 51080, "93.184.216.34", 8080, 1001, 5001, "POST", "/v1/events", "api.lmctl.ai", "{\"event\":\"deploy\",\"ok\":true}");
+cap.http_response(0.078, "93.184.216.34", 8080, "10.10.1.15", 51080, 5001, 1122, 200, "OK", "application/json", "{\"status\":\"recorded\"}");
+
+cap.save_pcapng("build/examples/pcap/protocol_ladder.pcapng");
+let verified = shark.open("build/examples/pcap/protocol_ladder.pcapng");
+assert_eq(verified.packet_count(), 14);
+assert_eq(verified.pkt_field(3, "dns.answer"), "93.184.216.34");
+assert_eq(verified.pkt_field(7, "tls.sni"), "api.lmctl.ai");
+assert_eq(verified.pkt_field(13, "http.status"), "200");
+assert_eq(verified.pkt_field(12, "tcp.len"), "121");
+assert_eq(verified.pkt_field(8, "tls.version"), "TLS 1.3");
+verified.save_packets_csv("build/examples/pcap/protocol_ladder_packets.csv");
+end _lmcode_
+savedsl(p, "build/examples/pcap/protocol_ladder.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/protocol_ladder.dslb;
+assert(r.code == 0);
+
+# 2. Render the dissected Protocol Sequence Ladder Diagram with lmdraw
+draw = _lmcode_ cli="lmdraw" install="github:lmctl-ai/lmdraw@latest";
+scene.canvas(900, 620, "#0d1520");
+
+# Title banner
+scene.text(450.0, 36.0, 22.0, "Dissected Packet Sequence Ladder (ARP -> DNS -> TCP -> TLS 1.3 -> HTTP)", "#e6edf3").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(450.0, 58.0, 13.0, "14 frames captured & verified via pcapng round-trip | RTT = 16.0 ms | SNI = api.lmctl.ai", "#8b949e").set_attr("text-anchor", "middle");
+
+# 3 Lifeline Header Cards: Client (x=160), DNS/GW (x=450), API Server (x=740)
+scene.rect(75.0, 74.0, 170.0, 46.0, "#162436").set_attr("stroke", "#58a6ff").set_attr("stroke-width", "2");
+scene.text(160.0, 95.0, 14.0, "Client Host", "#58a6ff").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(160.0, 112.0, 12.0, "10.10.1.15", "#c9d1d9").set_attr("text-anchor", "middle");
+
+scene.rect(365.0, 74.0, 170.0, 46.0, "#162436").set_attr("stroke", "#d29922").set_attr("stroke-width", "2");
+scene.text(450.0, 95.0, 14.0, "Gateway / DNS", "#f2cc60").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(450.0, 112.0, 12.0, "10.10.1.1 / 1.1.1.1", "#c9d1d9").set_attr("text-anchor", "middle");
+
+scene.rect(655.0, 74.0, 170.0, 46.0, "#162436").set_attr("stroke", "#3fb950").set_attr("stroke-width", "2");
+scene.text(740.0, 95.0, 14.0, "API Edge Server", "#3fb950").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(740.0, 112.0, 12.0, "93.184.216.34:443", "#c9d1d9").set_attr("text-anchor", "middle");
+
+# Vertical lifeline rails
+scene.line(160.0, 120.0, 160.0, 585.0, "#30435c", 2.0);
+scene.line(450.0, 120.0, 450.0, 585.0, "#30435c", 2.0);
+scene.line(740.0, 120.0, 740.0, 585.0, "#30435c", 2.0);
+
+# Phase 1: ARP + DNS (Client <-> Gateway/DNS)
+scene.rect(24.0, 134.0, 852.0, 94.0, "#111c2a").set_attr("stroke", "#24354a").set_attr("stroke-width", "1");
+scene.text(36.0, 152.0, 12.0, "L2/UDP", "#f2cc60").set_attr("font-weight", "700");
+
+scene.arrow(160.0, 150.0, 444.0, 162.0, "#f2cc60", 2.2);
+scene.text(305.0, 141.0, 12.0, "t=1ms  ARP Who has 10.10.1.1? -> 02:10:20:30:40:fe", "#f2cc60").set_attr("text-anchor", "middle");
+
+scene.arrow(160.0, 182.0, 444.0, 194.0, "#58a6ff", 2.2);
+scene.text(305.0, 173.0, 12.0, "t=5ms  DNS Query 0x4a1f A api.lmctl.ai (UDP :53)", "#79c0ff").set_attr("text-anchor", "middle");
+
+scene.arrow(450.0, 216.0, 166.0, 225.0, "#58a6ff", 2.2);
+scene.text(305.0, 208.0, 12.0, "t=14ms DNS Response A -> 93.184.216.34 (NOERROR)", "#a5d6ff").set_attr("text-anchor", "middle");
+
+# Phase 2: TCP 3-Way Handshake (Client <-> API Edge)
+scene.rect(24.0, 240.0, 852.0, 110.0, "#111c2a").set_attr("stroke", "#24354a").set_attr("stroke-width", "1");
+scene.text(36.0, 258.0, 12.0, "L4 TCP", "#3fb950").set_attr("font-weight", "700");
+
+scene.arrow(160.0, 258.0, 734.0, 274.0, "#3fb950", 2.4);
+scene.text(450.0, 254.0, 12.0, "t=16ms [SYN] Seq=0 Win=64240 (51443 -> 443)", "#56d364").set_attr("text-anchor", "middle");
+
+scene.arrow(740.0, 292.0, 166.0, 308.0, "#3fb950", 2.4);
+scene.text(450.0, 285.0, 12.0, "t=24ms [SYN,ACK] Seq=0 Ack=1 Win=65535", "#7ee787").set_attr("text-anchor", "middle");
+
+scene.arrow(160.0, 324.0, 734.0, 340.0, "#3fb950", 2.4);
+scene.text(450.0, 317.0, 12.0, "t=32ms [ACK] Seq=1 Ack=1 (Handshake RTT = 16.0 ms)", "#56d364").set_attr("text-anchor", "middle");
+
+# Phase 3: TLS 1.3 Cryptographic Handshake
+scene.rect(24.0, 362.0, 852.0, 92.0, "#111c2a").set_attr("stroke", "#24354a").set_attr("stroke-width", "1");
+scene.text(36.0, 380.0, 12.0, "L7 TLS", "#d2a8ff").set_attr("font-weight", "700");
+
+scene.arrow(160.0, 384.0, 734.0, 400.0, "#bc8cff", 2.5);
+scene.text(450.0, 375.0, 12.0, "t=35ms TLS 1.3 ClientHello (SNI=api.lmctl.ai, ALPN=h2)", "#d2a8ff").set_attr("text-anchor", "middle");
+
+scene.arrow(740.0, 422.0, 166.0, 438.0, "#bc8cff", 2.5);
+scene.text(450.0, 415.0, 12.0, "t=44ms TLS 1.3 ServerHello [Cipher=0x1301 AES_128_GCM_SHA256]", "#e2c5ff").set_attr("text-anchor", "middle");
+
+# Phase 4: HTTP/1.1 Application Exchange
+scene.rect(24.0, 466.0, 852.0, 108.0, "#111c2a").set_attr("stroke", "#24354a").set_attr("stroke-width", "1");
+scene.text(36.0, 484.0, 12.0, "L7 HTTP", "#ff7b72").set_attr("font-weight", "700");
+
+scene.arrow(160.0, 492.0, 734.0, 510.0, "#ff7b72", 2.5);
+scene.text(450.0, 483.0, 12.0, "t=68ms HTTP POST /v1/events Host: api.lmctl.ai (121 B)", "#ffa198").set_attr("text-anchor", "middle");
+
+scene.arrow(740.0, 536.0, 166.0, 554.0, "#ff7b72", 2.5);
+scene.text(450.0, 529.0, 12.0, "t=78ms HTTP/1.1 200 OK application/json {\"status\":\"recorded\"}", "#ff7b72").set_attr("text-anchor", "middle");
+
+scene.render_png("build/rendered/protocol_sequence_ladder.png", 900, 620, 1);
+end _lmcode_
+savedsl(draw, "build/examples/pcap/protocol_ladder_draw.dslb");
+rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/protocol_ladder_draw.dslb;
+assert(rd.code == 0);
+copy_file("build/rendered/protocol_sequence_ladder.png", "images/protocol_sequence_ladder.png");
+copy_file("build/rendered/protocol_sequence_ladder.png", "docs/images/pcap/protocol_sequence_ladder.png");

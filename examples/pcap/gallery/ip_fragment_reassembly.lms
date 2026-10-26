@@ -1,0 +1,118 @@
+mkdir("build");
+mkdir("build/examples/pcap");
+mkdir("build/rendered");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+# 1. Construct IPv4 (RFC 791) and IPv6 (RFC 8200 Next-Header 44) fragment chains and verify L4/L7 reassembly in lmshark
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let cap = shark.capture();
+
+# IPv4 3-fragment UDP chain (id = 0x1234 = 4660, offsets 0, 8, 16)
+cap.ipv4_fragment(0.002, "10.40.0.10", "10.40.0.20", 17, 4660, 0, true, "04d2138900160000");
+cap.ipv4_fragment(0.005, "10.40.0.10", "10.40.0.20", 17, 4660, 8, true, "465241475f504159");
+cap.ipv4_fragment(0.008, "10.40.0.10", "10.40.0.20", 17, 4660, 16, false, "4c4f41442121");
+
+# IPv6 RFC 8200 Fragment Header (Next Header = 44 -> 17 UDP, id = 99999, offsets 0, 8)
+cap.ipv6_fragment(0.012, "2001:db8:40::1", "2001:db8:40::2", 17, 99999, 0, true, "13881389000e0000");
+cap.ipv6_fragment(0.016, "2001:db8:40::1", "2001:db8:40::2", 17, 99999, 8, false, "763666726167");
+
+# Verify intermediate fragments remain L3 while completing fragments reassemble L4
+assert_eq(cap.pkt_proto(0), "IPv4");
+assert_eq(cap.pkt_field(0, "ip.fragmented"), "true");
+assert_eq(cap.pkt_field(0, "ip.flags.mf"), "1");
+assert_eq(cap.pkt_proto(1), "IPv4");
+assert_eq(cap.pkt_field(1, "ip.frag_offset"), "8");
+assert_eq(cap.pkt_proto(2), "UDP");
+assert_eq(cap.pkt_field(2, "ip.reassembled"), "true");
+assert_eq(cap.pkt_field(2, "ip.reassembled_len"), "22");
+assert_eq(cap.pkt_srcport(2), 1234);
+assert_eq(cap.pkt_dstport(2), 5001);
+
+assert_eq(cap.pkt_proto(3), "IPv6");
+assert_eq(cap.pkt_field(3, "ipv6.fragmented"), "true");
+assert_eq(cap.pkt_proto(4), "UDP");
+assert_eq(cap.pkt_field(4, "ipv6.reassembled"), "true");
+assert_eq(cap.pkt_field(4, "ipv6.reassembled_len"), "14");
+assert_eq(cap.pkt_srcport(4), 5000);
+assert_eq(cap.pkt_dstport(4), 5001);
+
+assert_eq(cap.filter("ip.fragmented").packet_count(), 3);
+assert_eq(cap.filter("ip.reassembled").packet_count(), 1);
+assert_eq(cap.filter("ipv6.fragmented").packet_count(), 2);
+assert_eq(cap.filter("ipv6.reassembled").packet_count(), 1);
+
+cap.save_packets_csv("build/examples/pcap/ip_fragment_reassembly.csv");
+end _lmcode_
+savedsl(p, "build/examples/pcap/ip_fragment_reassembly.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/ip_fragment_reassembly.dslb;
+assert(r.code == 0);
+
+# 2. Render IPv4 & IPv6 Fragment Reassembly Forensics Diagram in lmdraw
+draw = _lmcode_ cli="lmdraw" install="github:lmctl-ai/lmdraw@latest";
+scene.canvas(900, 560, "#0d1520");
+
+scene.text(450.0, 34.0, 21.0, "IPv4 (RFC 791) & IPv6 (RFC 8200 Next-Header 44) Fragment Reassembly", "#e6edf3").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(450.0, 56.0, 13.0, "Non-initial and incomplete fragments stay L3; completing fragment triggers contiguous L4/L7 payload dissection", "#8b949e").set_attr("text-anchor", "middle");
+
+# Left Panel: IPv4 3-Fragment Chain (id=0x1234)
+scene.rect(28.0, 78.0, 410.0, 452.0, "#111c2a").set_attr("stroke", "#24354a").set_attr("stroke-width", "1.5");
+scene.text(233.0, 104.0, 16.0, "IPv4 Fragmentation Chain (id = 0x1234)", "#58a6ff").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(233.0, 124.0, 12.0, "10.40.0.10 -> 10.40.0.20 | Proto = 17 (UDP)", "#8b949e").set_attr("text-anchor", "middle");
+
+# Fragment #0
+scene.rect(44.0, 144.0, 378.0, 74.0, "#162436").set_attr("stroke", "#d29922").set_attr("stroke-width", "2");
+scene.text(58.0, 166.0, 13.0, "Frame #0 (t = 2 ms)  |  Proto: IPv4 fragment", "#f2cc60").set_attr("font-weight", "700");
+scene.text(58.0, 186.0, 12.0, "ip.frag_offset = 0   |  ip.flags.mf = 1 (More Fragments)", "#c9d1d9");
+scene.text(58.0, 204.0, 11.5, "Bytes [0..7]: UDP header 1234 -> 5001 (buffered at L3)", "#8b949e");
+
+# Fragment #1
+scene.rect(44.0, 236.0, 378.0, 74.0, "#162436").set_attr("stroke", "#d29922").set_attr("stroke-width", "2");
+scene.text(58.0, 258.0, 13.0, "Frame #1 (t = 5 ms)  |  Proto: IPv4 fragment", "#f2cc60").set_attr("font-weight", "700");
+scene.text(58.0, 278.0, 12.0, "ip.frag_offset = 8   |  ip.flags.mf = 1 (More Fragments)", "#c9d1d9");
+scene.text(58.0, 296.0, 11.5, "Bytes [8..15]: \"FRAG_PAY\" (8-byte aligned middle slice)", "#8b949e");
+
+# Fragment #2 (Completing)
+scene.rect(44.0, 328.0, 378.0, 74.0, "#162436").set_attr("stroke", "#3fb950").set_attr("stroke-width", "2");
+scene.text(58.0, 350.0, 13.0, "Frame #2 (t = 8 ms)  |  Proto: UDP (Reassembled!)", "#3fb950").set_attr("font-weight", "700");
+scene.text(58.0, 370.0, 12.0, "ip.frag_offset = 16  |  ip.flags.mf = 0 (Final Fragment)", "#c9d1d9");
+scene.text(58.0, 388.0, 11.5, "Bytes [16..21]: \"LOAD!!\" -> Completes 22-byte datagram", "#7ee787");
+
+# Reassembled Output Box (IPv4)
+scene.arrow(233.0, 404.0, 233.0, 430.0, "#3fb950", 2.4);
+scene.rect(44.0, 434.0, 378.0, 76.0, "#0f291e").set_attr("stroke", "#3fb950").set_attr("stroke-width", "2");
+scene.text(233.0, 458.0, 13.0, "ip.reassembled = true  |  ip.reassembled_len = 22 B", "#56d364").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(233.0, 478.0, 11.5, "Dissected L4: UDP 1234 -> 5001 (len=22, \"FRAG_PAYLOAD!!\")", "#e6edf3").set_attr("text-anchor", "middle");
+scene.text(233.0, 496.0, 11.0, "Filter match: ip.fragmented && ip.reassembled", "#7ee787").set_attr("text-anchor", "middle");
+
+# Right Panel: IPv6 RFC 8200 Fragment Header Chain (id=99999)
+scene.rect(462.0, 78.0, 410.0, 452.0, "#111c2a").set_attr("stroke", "#24354a").set_attr("stroke-width", "1.5");
+scene.text(667.0, 104.0, 16.0, "IPv6 Extension Header 44 (id = 99999)", "#d2a8ff").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(667.0, 124.0, 12.0, "2001:db8:40::1 -> 2001:db8:40::2 | NextHdr = 44 -> 17", "#8b949e").set_attr("text-anchor", "middle");
+
+# IPv6 Fragment #0
+scene.rect(478.0, 164.0, 378.0, 92.0, "#162436").set_attr("stroke", "#bc8cff").set_attr("stroke-width", "2");
+scene.text(492.0, 188.0, 13.0, "Frame #3 (t = 12 ms) |  Proto: IPv6 fragment", "#d2a8ff").set_attr("font-weight", "700");
+scene.text(492.0, 210.0, 12.0, "ipv6.frag_offset = 0 |  ipv6.flags.mf = 1  |  id = 99999", "#c9d1d9");
+scene.text(492.0, 230.0, 11.5, "RFC 8200 8-byte Frag Hdr + Bytes [0..7] (UDP 5000->5001)", "#8b949e");
+
+# IPv6 Fragment #1 (Completing)
+scene.rect(478.0, 286.0, 378.0, 92.0, "#162436").set_attr("stroke", "#3fb950").set_attr("stroke-width", "2");
+scene.text(492.0, 310.0, 13.0, "Frame #4 (t = 16 ms) |  Proto: UDP (Reassembled!)", "#3fb950").set_attr("font-weight", "700");
+scene.text(492.0, 332.0, 12.0, "ipv6.frag_offset = 8 |  ipv6.flags.mf = 0  |  id = 99999", "#c9d1d9");
+scene.text(492.0, 352.0, 11.5, "Bytes [8..13]: \"v6frag\" -> Completes 14-byte IPv6 UDP", "#7ee787");
+
+# Reassembled Output Box (IPv6)
+scene.arrow(667.0, 382.0, 667.0, 430.0, "#3fb950", 2.4);
+scene.rect(478.0, 434.0, 378.0, 76.0, "#0f291e").set_attr("stroke", "#3fb950").set_attr("stroke-width", "2");
+scene.text(667.0, 458.0, 13.0, "ipv6.reassembled = true  |  ipv6.reassembled_len = 14 B", "#56d364").set_attr("text-anchor", "middle").set_attr("font-weight", "700");
+scene.text(667.0, 478.0, 11.5, "Dissected L4: UDP 5000 -> 5001 (len=14, Payload=\"v6frag\")", "#e6edf3").set_attr("text-anchor", "middle");
+scene.text(667.0, 496.0, 11.0, "Filter match: ipv6.fragmented && ipv6.reassembled", "#7ee787").set_attr("text-anchor", "middle");
+
+scene.render_png("build/rendered/ip_fragment_reassembly.png", 900, 560, 1);
+end _lmcode_
+savedsl(draw, "build/examples/pcap/ip_fragment_reassembly_draw.dslb");
+rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/ip_fragment_reassembly_draw.dslb;
+assert(rd.code == 0);
+copy_file("build/rendered/ip_fragment_reassembly.png", "images/ip_fragment_reassembly.png");
+copy_file("build/rendered/ip_fragment_reassembly.png", "docs/images/pcap/ip_fragment_reassembly.png");

@@ -1,0 +1,76 @@
+mkdir("build/examples/pcap");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+# 1. Build a multi-tenant IEEE 802.1Q trunk capture across VLANs 10, 20, 30, and 99 in lmshark
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let cap = shark.capture();
+
+for (b in range(0, 40)) {
+    let t = float(b) * 0.10;
+
+    # VLAN 10: Production TLS 1.3 API Tenant
+    cap.set_vlan(10);
+    let v10_n = int(3.0 + 4.0 * sin(t * 1.6) * sin(t * 1.6));
+    for (k in range(0, v10_n)) {
+        cap.tls_app_data(t + float(k) * 0.005, "10.10.0.12", 52443, "10.10.0.100", 443, 10000 + b * 8000 + k * 800, 5001, 780);
+    }
+
+    # VLAN 20: Storage Backup Burst (peaking around t = 1.6 .. 2.8 s)
+    cap.set_vlan(20);
+    let dt = (t - 2.2) / 0.65;
+    let v20_n = int(1.0 + 9.0 * pow(2.718281828, -0.5 * dt * dt));
+    for (k in range(0, v20_n)) {
+        cap.tcp_segment(t + 0.002 + float(k) * 0.004, "10.20.0.50", 49100, "10.20.0.200", 9000, 50000 + b * 15000 + k * 1024, 1001, "PSH,ACK", 65535, "STORAGE_REPLICATION_BLOCK_0123456789ABCDEF_0123456789ABCDEF_0123456789ABCDEF_0123456789ABCDEF");
+    }
+
+    # VLAN 30: Low-latency QUIC v2 Media / Real-Time Telemetry
+    cap.set_vlan(30);
+    let v30_n = int(2.0 + 3.0 * cos(t * 1.2) * cos(t * 1.2));
+    for (k in range(0, v30_n)) {
+        cap.quic_short(t + 0.004 + float(k) * 0.005, "10.30.0.15", 55443, "10.30.0.88", 443, "1122334455667788", b * 10 + k, 620);
+    }
+
+    # VLAN 99: Control-Plane Management (ARP, DNS, NTP, DHCP)
+    cap.set_vlan(99);
+    cap.dns_query(t + 0.010, "10.99.0.5", 53100 + b, "10.99.0.1", 800 + b, "mgmt.cluster.local", "A");
+    cap.dns_response(t + 0.014, "10.99.0.1", "10.99.0.5", 53100 + b, 800 + b, "mgmt.cluster.local", "A", "10.99.0.10", 0);
+    cap.ntp_packet(t + 0.020, "10.99.0.5", 55123, "10.99.0.1", 3, 2, "10.99.0.1", 1700001000.0 + t);
+}
+cap.clear_vlan();
+
+# Slice each tenant using both Wireshark display filters and BPF capture filters
+let v10 = cap.filter("vlan.id == 10");
+let v20 = cap.bpf("vlan 20");
+let v30 = cap.filter("vlan.id == 30 && quic");
+let v99 = cap.bpf("vlan 99");
+
+v10.save_io_graph_csv(0.10, "build/examples/pcap/vlan10_io.csv");
+v20.save_io_graph_csv(0.10, "build/examples/pcap/vlan20_io.csv");
+v30.save_io_graph_csv(0.10, "build/examples/pcap/vlan30_io.csv");
+v99.save_io_graph_csv(0.10, "build/examples/pcap/vlan99_io.csv");
+
+assert_eq(v10.packet_count() + v20.packet_count() + v30.packet_count() + v99.packet_count(), cap.packet_count());
+end _lmcode_
+savedsl(p, "build/examples/pcap/vlan_segmentation.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/vlan_segmentation.dslb;
+assert(r.code == 0);
+
+# 2. Plot Multi-Tenant 802.1Q VLAN Traffic Segmentation in lmplot
+plt = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
+plot.png("images/vlan_segmentation.png", 900, 540);
+plot.cmd("set datafile separator ','");
+plot.cmd("set grid lw 1 lc rgb '#d0d7de'");
+plot.cmd("set title 'IEEE 802.1Q Multi-Tenant Trunk Segmentation via BPF and Display Filters (lmshark)' font ',13'");
+plot.cmd("set xlabel 'Capture Time (s)'");
+plot.cmd("set ylabel 'Tenant Throughput (Mbps)'");
+plot.cmd("set xrange [0:3.9]");
+plot.cmd("set yrange [0:0.55]");
+plot.cmd("set key top right box opaque");
+plot.cmd("plot 'build/examples/pcap/vlan10_io.csv' every ::1 using 1:4 with lines lw 2.5 lc rgb '#8957e5' title 'VLAN 10: Prod TLS 1.3 API (vlan.id == 10)', 'build/examples/pcap/vlan30_io.csv' every ::1 using 1:4 with lines lw 2.5 lc rgb '#2ea043' title 'VLAN 30: QUIC v2 Media (vlan.id == 30 and quic)', 'build/examples/pcap/vlan20_io.csv' every ::1 using 1:4 with filledcurves y1=0 lc rgb '#0969da' fs transparent solid 0.25 title 'VLAN 20: Storage Replication Burst (bpf: vlan 20)', 'build/examples/pcap/vlan20_io.csv' every ::1 using 1:4 with lines lw 2.2 lc rgb '#0969da' notitle, 'build/examples/pcap/vlan99_io.csv' every ::1 using 1:4 with lines lw 2.0 dt 2 lc rgb '#d29922' title 'VLAN 99: Mgmt DNS + NTP Control Plane'");
+plot.close();
+end _lmcode_
+savedsl(plt, "build/examples/pcap/vlan_segmentation_plot.dslb");
+rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/vlan_segmentation_plot.dslb;
+assert(rp.code == 0);
+copy_file("images/vlan_segmentation.png", "docs/images/pcap/vlan_segmentation.png");

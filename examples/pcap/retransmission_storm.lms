@@ -1,0 +1,127 @@
+# Retransmission storm on a flaky Wi-Fi uplink: a 6-second bulk upload (1 segment / 2 ms,
+# 40 ms RTT) whose loss rate jumps from 0.3 % to 25 % between t = 2.0 s and t = 3.5 s.
+# The receiver answers every hole with duplicate ACKs; after three of them the sender fast
+# retransmits. lmshark flags dup ACKs and (fast) retransmissions; the figure shows how the
+# storm turns into stalls in the time-sequence graph and spikes in the event counts.
+mkdir("build/examples/pcap");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let c = shark.capture();
+let cl = "10.20.0.15";
+let sv = "198.51.100.40";
+let mss = 1000;
+let d = 20;
+let isn = 100000;
+c.tcp_segment(0.000, cl, 50500, sv, 443, isn, 0, "SYN", 64240, "");
+c.tcp_segment(0.040, sv, 443, cl, 50500, 7000, isn + 1, "SYN,ACK", 65535, "");
+c.tcp_segment(0.040, cl, 50500, sv, 443, isn + 1, 7001, "ACK", 64240, "");
+let seed = 20261023;
+let lost = -1;
+let rtx_slot = -1;
+let losses = 0;
+let fast = 0;
+let pay = "";
+for (i in range(0, mss)) {
+    pay = pay + "x";
+}
+for (k in range(0, 3000)) {
+    let t = 0.042 + float(k) * 0.002;
+    # data segment k
+    c.tcp_segment(t, cl, 50500, sv, 443, isn + 1 + k * mss, 7001, "PSH,ACK", 64240, pay);
+    seed = (seed * 1103515245 + 12345) % 2147483648;
+    let u = float(seed) / 2147483648.0;
+    let pl = 0.003;
+    if (t >= 2.0 && t < 3.5) {
+        pl = 0.25;
+    }
+    if (lost < 0 && u < pl) {
+        lost = k;
+        rtx_slot = k + d + 3;
+        losses = losses + 1;
+    }
+    # fast retransmission once three duplicate ACKs have arrived
+    if (lost >= 0 && k == rtx_slot) {
+        c.tcp_segment(t + 0.0005, cl, 50500, sv, 443, isn + 1 + lost * mss, 7001, "PSH,ACK", 64240, pay);
+        fast = fast + 1;
+    }
+    # the ACK arriving now answers segment j = k - d
+    let j = k - d;
+    if (j >= 0) {
+        let ta = t + 0.001;
+        if (lost >= 0 && j >= lost && k < rtx_slot + d) {
+            if (j > lost) {
+                c.tcp_segment(ta, sv, 443, cl, 50500, 7001, isn + 1 + lost * mss, "ACK", 65535, "");
+            }
+        } else {
+            if (lost >= 0 && k >= rtx_slot + d) {
+                lost = -1;
+            }
+            c.tcp_segment(ta, sv, 443, cl, 50500, 7001, isn + 1 + (j + 1) * mss, "ACK", 65535, "");
+        }
+    }
+}
+print("losses=" + str(losses) + " fast_retransmissions=" + str(fast) + " dup_acks=" + str(c.dup_ack_count()));
+assert_eq(losses, 21);
+assert_eq(c.dup_ack_count(), 462);
+assert_eq(c.count("tcp.analysis.fast_retransmission"), fast);
+assert_eq(c.retransmission_count(), fast);
+assert_eq(c.count("tcp.analysis.fast_retransmission && frame.time >= 2.0 && frame.time < 3.6") > 10, true);
+assert_eq(c.count("tcp.analysis.fast_retransmission && frame.time < 2.0") < 4, true);
+c.save_fields_csv("tcp.srcport == 443 && tcp.flags.ack == 1", "frame.time,tcp.rel_ack,tcp.analysis.acked_bytes", "build/examples/pcap/storm_acks.csv");
+c.save_fields_csv("tcp.dstport == 443 && tcp.len > 0", "frame.time,tcp.rel_seq,tcp.analysis.fast_retransmission", "build/examples/pcap/storm_data.csv");
+c.save_fields_csv("tcp.analysis.duplicate_ack || tcp.analysis.retransmission", "frame.time,tcp.analysis.duplicate_ack,tcp.analysis.fast_retransmission", "build/examples/pcap/storm_events.csv");
+end _lmcode_
+savedsl(p, "build/examples/pcap/retransmission_storm.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/retransmission_storm.dslb;
+if (r.code != 0) {
+  print(r.stdout + r.stderr);
+}
+assert(r.code == 0);
+
+plt = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
+plot.png("images/retransmission_storm.png", 960, 780);
+plot.cmd("set datafile separator ','");
+plot.cmd("set multiplot title 'Retransmission storm: 25 % loss on a Wi-Fi uplink between t = 2.0 s and 3.5 s (lmshark dissection)' font ',13'");
+plot.cmd("set lmargin 11; set rmargin 4");
+plot.cmd("set grid lw 1 lc rgb '#d0d7de'");
+plot.cmd("set style fill solid 0.85 noborder");
+plot.cmd("bin(x) = 0.1*floor(x/0.1) + 0.05");
+# (a) goodput: bytes newly acknowledged per 100 ms
+plot.cmd("set size 1, 0.32; set origin 0, 0.64");
+plot.cmd("set title 'Delivered goodput turns bursty: 86 ms ACK stalls, then catch-up bursts (20 ms bins)' font ',11'");
+plot.cmd("set xrange [0:6.1]; set yrange [0:20]");
+plot.cmd("set ylabel 'Mbit/s'");
+plot.cmd("set object 1 rect from 2.0, graph 0 to 3.5, graph 1 fc rgb '#ffebe9' fs solid 1.0 noborder behind");
+plot.cmd("set key top right box opaque");
+plot.cmd("set boxwidth 0.017 absolute");
+plot.cmd("bin2(x) = 0.02*floor(x/0.02) + 0.01");
+plot.cmd("plot 'build/examples/pcap/storm_acks.csv' every ::1 using (bin2($1)):($3*8/0.02/1e6) smooth frequency with boxes lc rgb '#1a7f37' title 'goodput (newly ACKed bytes)', 4 with lines dt 2 lw 2 lc rgb '#0969da' title 'offered load 4 Mbit/s'");
+# (b) zoomed time-sequence graph of three loss episodes
+plot.cmd("set size 1, 0.33; set origin 0, 0.32");
+plot.cmd("set title 'Zoom 2.00-2.30 s: dup ACKs pin the cumulative ACK, the fast retransmission releases it' font ',11'");
+plot.cmd("unset object 1");
+plot.cmd("set xrange [2.0:2.3]; set yrange [960:1140]");
+plot.cmd("set ylabel 'Relative seq (kB)'");
+plot.cmd("set key top left box opaque");
+plot.cmd("plot 'build/examples/pcap/storm_data.csv' every ::1 using (strcol(3) eq 'false' ? $1 : 1/0):($2/1e3) with points pt 7 ps 0.35 lc rgb '#0969da' title 'data segment', 'build/examples/pcap/storm_acks.csv' every ::1 using 1:($2/1e3) with steps lw 2 lc rgb '#1a7f37' title 'cumulative ACK (flat = duplicate ACKs)', 'build/examples/pcap/storm_data.csv' every ::1 using (strcol(3) eq 'true' ? $1 : 1/0):($2/1e3) with points pt 9 ps 1.6 lc rgb '#cf222e' title 'fast retransmission'");
+# (c) event counts
+plot.cmd("set size 1, 0.32; set origin 0, 0.0");
+plot.cmd("set title 'lmshark analysis flags per 100 ms' font ',11'");
+plot.cmd("set object 1 rect from 2.0, graph 0 to 3.5, graph 1 fc rgb '#ffebe9' fs solid 1.0 noborder behind");
+plot.cmd("set xrange [0:6.1]");
+plot.cmd("set xlabel 'Capture time (s)'");
+plot.cmd("set ylabel 'Events'");
+plot.cmd("set yrange [0:60]");
+plot.cmd("set boxwidth 0.085 absolute");
+plot.cmd("set key top right box opaque");
+plot.cmd("plot 'build/examples/pcap/storm_events.csv' every ::1 using (bin($1)):(strcol(2) eq 'true' ? 1 : 0) smooth frequency with boxes lc rgb '#bf8700' title 'tcp.analysis.duplicate\\_ack', '' every ::1 using (bin($1)):(strcol(3) eq 'true' ? 10 : 0) smooth frequency with boxes fs solid 0.9 lc rgb '#cf222e' title 'tcp.analysis.fast\\_retransmission (x10)'");
+plot.cmd("unset multiplot");
+plot.close();
+end _lmcode_
+savedsl(plt, "build/examples/pcap/retransmission_storm_plot.dslb");
+rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/retransmission_storm_plot.dslb;
+assert(rp.code == 0);
+copy_file("images/retransmission_storm.png", "docs/images/pcap/retransmission_storm.png");
+print("wrote images/retransmission_storm.png");

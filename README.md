@@ -106,6 +106,56 @@ lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/d
 lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/detect-quarantine.lms
 ```
 
+### Packet capture and protocol analysis (`context shark: Shark`)
+
+Each packet-capture example in [`examples/pcap/`](examples/pcap/README.md) synthesizes a deterministic pcap/pcapng trace (or enumerates live interfaces unprivileged) via `lmdebug pcap`, verifies protocol invariants in lmscript, and renders figures with [lmplot](https://github.com/lmctl-ai/lmplot) or [lmdraw](https://github.com/lmctl-ai/lmdraw):
+
+| Example | Preview | Description |
+| --- | --- | --- |
+| [`pcap/dns_latency.lms`](examples/pcap/dns_latency.lms) | [`dns_latency.png`](docs/images/pcap/dns_latency.png) | DNS query/response RTT distribution and RCODE breakdown |
+| [`pcap/flow_sankey.lms`](examples/pcap/flow_sankey.lms) | [`flow_sankey.png`](docs/images/pcap/flow_sankey.png) | Multi-tier L3/L4 flow Sankey diagram |
+| [`pcap/gallery/ip_fragment_reassembly.lms`](examples/pcap/gallery/ip_fragment_reassembly.lms) | [`ip_fragment_reassembly.png`](docs/images/pcap/ip_fragment_reassembly.png) | IPv4 fragment offset diagram and reassembly verification |
+| [`pcap/gallery/quic_vs_tls_handshake.lms`](examples/pcap/gallery/quic_vs_tls_handshake.lms) | [`quic_vs_tls_handshake.png`](docs/images/pcap/quic_vs_tls_handshake.png) | QUIC 1-RTT vs TLS 1.3 + TCP handshake latency comparison |
+| [`pcap/gallery/tcp_seqwrap_and_ecn.lms`](examples/pcap/gallery/tcp_seqwrap_and_ecn.lms) | [`tcp_seqwrap_and_ecn.png`](docs/images/pcap/tcp_seqwrap_and_ecn.png) | 32-bit TCP sequence wraparound and ECN congestion marking |
+| [`pcap/gallery/vlan_segmentation.lms`](examples/pcap/gallery/vlan_segmentation.lms) | [`vlan_segmentation.png`](docs/images/pcap/vlan_segmentation.png) | IEEE 802.1Q VLAN tag segmentation and per-VLAN traffic |
+| [`pcap/header_anatomy.lms`](examples/pcap/header_anatomy.lms) | [`header_anatomy.png`](docs/images/pcap/header_anatomy.png) | Byte-accurate Ethernet/IPv4/TCP/TLS packet header bitfield diagram |
+| [`pcap/io_traffic_sweep.lms`](examples/pcap/io_traffic_sweep.lms) | [`io_traffic_sweep.gif`](docs/images/pcap/io_traffic_sweep.gif), [`io_traffic_burst.png`](docs/images/pcap/io_traffic_burst.png) | Multi-protocol I/O throughput graph and animated GIF sweep |
+| [`pcap/packet_loss_rtt_histogram.lms`](examples/pcap/packet_loss_rtt_histogram.lms) | [`packet_loss_rtt_histogram.png`](docs/images/pcap/packet_loss_rtt_histogram.png) | Packet loss vs RTT bimodal histogram |
+| [`pcap/port_scan_detection.lms`](examples/pcap/port_scan_detection.lms) | [`port_scan_detection.png`](docs/images/pcap/port_scan_detection.png) | Horizontal/vertical TCP SYN scan detection and fan-out chart |
+| [`pcap/protocol_hierarchy.lms`](examples/pcap/protocol_hierarchy.lms) | [`protocol_hierarchy.png`](docs/images/pcap/protocol_hierarchy.png) | Protocol hierarchy packet/byte share breakdown |
+| [`pcap/protocol_sequence_ladder.lms`](examples/pcap/protocol_sequence_ladder.lms) | [`protocol_sequence_ladder.png`](docs/images/pcap/protocol_sequence_ladder.png) | DNS -> TCP -> TLS -> HTTP protocol sequence ladder diagram |
+| [`pcap/retransmission_storm.lms`](examples/pcap/retransmission_storm.lms) | [`retransmission_storm.png`](docs/images/pcap/retransmission_storm.png) | TCP retransmission storm and duplicate-ACK timeline |
+| [`pcap/rtt_distribution.lms`](examples/pcap/rtt_distribution.lms) | [`rtt_distribution.png`](docs/images/pcap/rtt_distribution.png) | Per-flow TCP handshake and ACK RTT distribution |
+| [`pcap/slow_start_cwnd.lms`](examples/pcap/slow_start_cwnd.lms) | [`slow_start_cwnd.png`](docs/images/pcap/slow_start_cwnd.png) | TCP slow-start congestion window and bytes-in-flight curve |
+| [`pcap/tcp_handshake_teardown.lms`](examples/pcap/tcp_handshake_teardown.lms) | [`tcp_handshake_teardown.png`](docs/images/pcap/tcp_handshake_teardown.png) | TCP 3-way handshake and 4-way FIN teardown state ladder |
+| [`pcap/tcp_stevens_graph.lms`](examples/pcap/tcp_stevens_graph.lms) | [`tcp_stevens_graph.png`](docs/images/pcap/tcp_stevens_graph.png) | Stevens time-sequence graph with SACK and out-of-order segments |
+| [`pcap/tls_version_census.lms`](examples/pcap/tls_version_census.lms) | [`tls_version_census.png`](docs/images/pcap/tls_version_census.png) | TLS ClientHello/ServerHello version and ALPN census |
+| [`pcap/top_talkers_topology.lms`](examples/pcap/top_talkers_topology.lms) | [`top_talkers_topology.png`](docs/images/pcap/top_talkers_topology.png) | Top talkers and endpoint communication topology graph |
+| [`pcap/live/interface_inventory.lms`](examples/pcap/live/interface_inventory.lms) | [`interface_inventory.png`](docs/images/pcap/live/interface_inventory.png) | Unprivileged libpcap interface inventory and flag matrix |
+
+```sh
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/dns_latency.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/flow_sankey.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/gallery/ip_fragment_reassembly.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/gallery/quic_vs_tls_handshake.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/gallery/tcp_seqwrap_and_ecn.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/gallery/vlan_segmentation.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/header_anatomy.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/io_traffic_sweep.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/packet_loss_rtt_histogram.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/port_scan_detection.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/protocol_hierarchy.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/protocol_sequence_ladder.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/retransmission_storm.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/rtt_distribution.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/slow_start_cwnd.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/tcp_handshake_teardown.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/tcp_stevens_graph.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/tls_version_census.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/top_talkers_topology.lms
+lmctl autorun https://raw.githubusercontent.com/lmctl-ai/lmdebug/main/examples/pcap/live/interface_inventory.lms
+```
+
 ## Use it
 
 The current release lane publishes `lmdebug-linux-x64` and `lmdebug-linux-arm64`, built against dynamic glibc >= 2.35 with all third-party libraries (`iputils` ping, `iperf3`, `libpcap`, `libyara`) and C++ runtimes linked statically. Download from the [releases](https://github.com/lmctl-ai/lmdebug/releases), or let `lmscript` fetch it: a program is a `_dsl_` (or `_lmcode_`) block compiled by `lmscript` (`npm i -g @lmctl-ai/lmctl`), which finds `lmdebug` on `PATH` or downloads the release on first use (`install=`).

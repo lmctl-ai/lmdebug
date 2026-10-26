@@ -1,0 +1,100 @@
+mkdir("build/examples/pcap");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+# 1. Build a TCP stream in lmshark with slow-start, congestion loss, Dup ACKs, fast retransmit, and window scaling
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let cap = shark.capture();
+
+let cip = "10.20.1.10";
+let sip = "10.20.2.80";
+cap.tcp_handshake(0.000, cip, 50100, sip, 443, 0.020);
+
+let chunk = "0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF";
+let clen = 128;
+let seq = 1001;
+let t = 0.025;
+
+# Phase 1: Smooth slow-start & linear flight (segments 0..14)
+for (i in range(0, 15)) {
+    let win = 64240 - i * 1200;
+    cap.tcp_segment(t, cip, 50100, sip, 443, seq, 5001, "PSH,ACK", win, chunk);
+    seq = seq + clen;
+    if (i % 2 == 1) {
+        cap.tcp_segment(t + 0.010, sip, 443, cip, 50100, 5001, seq, "ACK", win, "");
+    }
+    t = t + 0.014;
+}
+
+# Phase 2: Segment at seq=2921 is delayed/lost; subsequent segments arrive out-of-order, triggering 3 Dup ACKs
+let lost_seq = seq;
+seq = seq + clen;
+for (j in range(0, 4)) {
+    cap.tcp_segment(t, cip, 50100, sip, 443, seq, 5001, "PSH,ACK", 36000 - j * 2500, chunk);
+    # Receiver emits Duplicate ACK pinned at lost_seq with constant window 36000
+    cap.tcp_segment(t + 0.006, sip, 443, cip, 50100, 5001, lost_seq, "ACK", 36000, "");
+    seq = seq + clen;
+    t = t + 0.012;
+}
+
+# Fast retransmit of lost_seq + retransmission of following segment
+cap.tcp_segment(t, cip, 50100, sip, 443, lost_seq, 5001, "PSH,ACK", 28000, chunk);
+t = t + 0.010;
+cap.tcp_segment(t, cip, 50100, sip, 443, lost_seq + clen, 5001, "PSH,ACK", 28000, chunk);
+t = t + 0.014;
+# Cumulative recovery ACK jumping to seq
+cap.tcp_segment(t, sip, 443, cip, 50100, 5001, seq, "ACK", 48000, "");
+t = t + 0.015;
+
+# Phase 3: Congestion avoidance recovery (segments 20..34)
+for (k in range(0, 15)) {
+    let win2 = 42000 + k * 1400;
+    cap.tcp_segment(t, cip, 50100, sip, 443, seq, 5001, "PSH,ACK", win2, chunk);
+    seq = seq + clen;
+    if (k == 7) {
+        # Second brief retransmission event
+        cap.tcp_segment(t + 0.006, cip, 50100, sip, 443, seq - clen, 5001, "PSH,ACK", 34000, chunk);
+    }
+    cap.tcp_segment(t + 0.011, sip, 443, cip, 50100, 5001, seq, "ACK", win2, "");
+    t = t + 0.015;
+}
+
+cap.save_time_sequence_csv(0, "build/examples/pcap/tcp_stevens.csv");
+assert_eq(cap.retransmission_count() >= 2, true);
+assert_eq(cap.dup_ack_count() >= 2, true);
+end _lmcode_
+savedsl(p, "build/examples/pcap/tcp_stevens.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/tcp_stevens.dslb;
+assert(r.code == 0);
+
+# 2. Plot Stevens Time-Sequence & Receive Window / RTT Graph in lmplot
+plt = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
+plot.png("images/tcp_stevens_graph.png", 900, 580);
+plot.cmd("set datafile separator ','");
+plot.cmd("set grid lw 1 lc rgb '#d0d7de'");
+plot.cmd("set multiplot layout 2,1 title 'Stevens TCP Time-Sequence, Fast Retransmission and Window Dynamics (lmshark)' font ',13'");
+
+plot.cmd("set size 1.0, 0.60");
+plot.cmd("set origin 0.0, 0.38");
+plot.cmd("set xlabel ''");
+plot.cmd("set ylabel 'Relative Sequence / ACK (Bytes)'");
+plot.cmd("set key top left box opaque");
+plot.cmd("plot 'build/examples/pcap/tcp_stevens.csv' every ::1 using (strcol(2) eq 'c2s' ? $1 : 1/0):3 smooth unique with lines lw 1.6 lc rgb '#0969da' notitle, '' every ::1 using (strcol(2) eq 'c2s' ? $1 : 1/0):3 with points pt 7 ps 0.9 lc rgb '#0969da' title 'Sent Data Sequence (c2s)', '' every ::1 using (strcol(2) eq 's2c' ? $1 : 1/0):4 smooth unique with lines lw 2.0 lc rgb '#2ea043' notitle, '' every ::1 using (strcol(2) eq 's2c' ? $1 : 1/0):4 with points pt 5 ps 1.0 lc rgb '#2ea043' title 'Cumulative and Dup ACKs (s2c)', '' every ::1 using ($7 == 1 ? $1 : 1/0):3 with points pt 7 ps 1.8 lc rgb '#cf222e' title 'TCP Fast Retransmission'");
+
+plot.cmd("set size 1.0, 0.38");
+plot.cmd("set origin 0.0, 0.0");
+plot.cmd("set xlabel 'Capture Time (s)'");
+plot.cmd("set ylabel 'Receive window (bytes)' tc rgb '#8957e5'");
+plot.cmd("set y2label 'ACK RTT (ms)' tc rgb '#b07d12'");
+plot.cmd("set ytics nomirror");
+plot.cmd("set y2tics 0, 10, 50");
+plot.cmd("set y2range [0:50]");
+plot.cmd("unset key");
+plot.cmd("plot 'build/examples/pcap/tcp_stevens.csv' every ::1 using 1:6 axes x1y1 with lines lw 2.2 lc rgb '#8957e5' title 'Advertised Receive Window (Bytes)', '' every ::1 using ($9 > 0 ? $1 : 1/0):9 axes x1y2 with impulses lw 3.5 lc rgb '#d29922' title 'Sampled ACK RTT (ms)'");
+plot.cmd("unset multiplot");
+plot.close();
+end _lmcode_
+savedsl(plt, "build/examples/pcap/tcp_stevens_plot.dslb");
+rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/tcp_stevens_plot.dslb;
+assert(rp.code == 0);
+copy_file("images/tcp_stevens_graph.png", "docs/images/pcap/tcp_stevens_graph.png");

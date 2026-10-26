@@ -1,0 +1,163 @@
+# TCP slow start and congestion avoidance read back from a capture: an idealised Reno
+# sender (initial window 10 x 1448 B, RTT 50 ms) whose path holds at most 120 segments.
+# lmshark's tcp.analysis.bytes_in_flight recovers the congestion window from the packets
+# alone: it doubles every RTT (known answer 10 x 2^(t/RTT) segments), overshoots to 160,
+# loses one segment, fast-retransmits, halves, then climbs one segment per RTT (sawtooth).
+mkdir("build/examples/pcap");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let c = shark.capture();
+let a = "10.0.0.10";
+let b = "10.9.0.20";
+let mss = 1448;
+let rtt = 0.050;
+let gap = 0.0001;
+let isn = 1000;
+let cap = 120;
+let pay = "";
+for (i in range(0, mss)) {
+    pay = pay + "d";
+}
+c.tcp_segment(0.000, a, 41000, b, 5201, isn, 0, "SYN", 64240, "");
+c.tcp_segment(rtt, b, 5201, a, 41000, 9000, isn + 1, "SYN,ACK", 65535, "");
+c.tcp_segment(rtt, a, 41000, b, 5201, isn + 1, 9001, "ACK", 65535, "");
+# round 0: initial window, back to back
+let t0 = rtt + 0.0002;
+let ps = 0;
+let pn = 10;
+let pdiv = 1;
+let ssthresh = 100000;
+for (i in range(0, pn)) {
+    c.tcp_segment(t0 + float(i) * gap, a, 41000, b, 5201, isn + 1 + i * mss, 9001, "PSH,ACK", 65535, pay);
+}
+let knext = pn;
+let lossidx = -1;
+let fastrtx = 0;
+let firstloss = 0.0;
+let maxcwnd = pn;
+let r = 0;
+while (t0 < 6.0) {
+    r = r + 1;
+    if (pn > cap && lossidx < 0) {
+        # the queue overflows: drop a late segment, leaving room for 3 duplicate ACKs
+        lossidx = min(cap, pn - 4);
+    }
+    if (lossidx >= 0) {
+        # recovery round: ACKs up to the hole, then duplicate ACKs, fast retransmit on the 3rd
+        let trtx = 0.0;
+        for (i in range(0, pn)) {
+            let ta = t0 + rtt + float(i) * gap / float(pdiv);
+            if (i < lossidx) {
+                c.tcp_segment(ta, b, 5201, a, 41000, 9001, isn + 1 + (ps + i + 1) * mss, "ACK", 65535, "");
+            }
+            if (i > lossidx) {
+                c.tcp_segment(ta, b, 5201, a, 41000, 9001, isn + 1 + (ps + lossidx) * mss, "ACK", 65535, "");
+            }
+            if (i == lossidx + 3) {
+                c.tcp_segment(ta + 0.00001, a, 41000, b, 5201, isn + 1 + (ps + lossidx) * mss, 9001, "PSH,ACK", 65535, pay);
+                trtx = ta;
+                fastrtx = fastrtx + 1;
+                if (fastrtx == 1) {
+                    firstloss = ta;
+                }
+            }
+        }
+        # the retransmission is acknowledged one RTT later: halve and restart the clock
+        let tack = trtx + rtt;
+        c.tcp_segment(tack, b, 5201, a, 41000, 9001, isn + 1 + knext * mss, "ACK", 65535, "");
+        ssthresh = pn / 2;
+        pn = ssthresh;
+        ps = knext;
+        pdiv = 1;
+        t0 = tack + 0.0001;
+        for (i in range(0, pn)) {
+            c.tcp_segment(t0 + float(i) * gap, a, 41000, b, 5201, isn + 1 + (ps + i) * mss, 9001, "PSH,ACK", 65535, pay);
+        }
+        knext = ps + pn;
+        lossidx = -1;
+    } else {
+        # normal round: every ACK clocks out 2 (slow start) or 1 (+1 per RTT) new segments
+        let slow = pn < ssthresh;
+        let nn = pn + 1;
+        let div = 1;
+        if (slow) {
+            nn = 2 * pn;
+            div = 2;
+        }
+        let ns = knext;
+        let sent = 0;
+        let tn = t0 + rtt;
+        for (i in range(0, pn)) {
+            let ta = t0 + rtt + float(i) * gap / float(pdiv);
+            c.tcp_segment(ta, b, 5201, a, 41000, 9001, isn + 1 + (ps + i + 1) * mss, "ACK", 65535, "");
+            let burst = 1;
+            if (slow) {
+                burst = 2;
+            }
+            if (!slow && i == pn - 1) {
+                burst = 2;
+            }
+            for (j in range(0, burst)) {
+                c.tcp_segment(ta + 0.00001 * float(j + 1), a, 41000, b, 5201, isn + 1 + (ns + sent) * mss, 9001, "PSH,ACK", 65535, pay);
+                sent = sent + 1;
+            }
+        }
+        ps = ns;
+        pn = sent;
+        pdiv = div;
+        knext = ns + sent;
+        t0 = tn;
+        if (pn > maxcwnd) {
+            maxcwnd = pn;
+        }
+    }
+}
+print("rounds=" + str(r) + " segments=" + str(knext) + " fast_rtx=" + str(fastrtx) + " max_cwnd=" + str(maxcwnd) + " first_loss_t=" + str(firstloss));
+assert_eq(maxcwnd, 160);
+assert_eq(c.count("tcp.analysis.bytes_in_flight == 231680"), 1);
+assert_eq(c.count("tcp.analysis.bytes_in_flight > 231680"), 0);
+assert_eq(c.count("tcp.analysis.fast_retransmission"), fastrtx);
+assert_eq(c.retransmission_count(), fastrtx);
+c.save_fields_csv("tcp.dstport == 5201 && tcp.len > 0", "frame.time,tcp.analysis.bytes_in_flight,tcp.analysis.fast_retransmission", "build/examples/pcap/cwnd_flight.csv");
+end _lmcode_
+savedsl(p, "build/examples/pcap/slow_start_cwnd.dslb");
+rs = system ${dsl_cli(p)} --dsl build/examples/pcap/slow_start_cwnd.dslb;
+if (rs.code != 0) {
+  print(rs.stdout + rs.stderr);
+}
+assert(rs.code == 0);
+
+plt = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
+plot.png("images/slow_start_cwnd.png", 960, 560);
+plot.cmd("set datafile separator ','");
+plot.cmd("set multiplot layout 1,2 title 'Congestion window recovered from a capture: lmshark tcp.analysis.bytes\\_in\\_flight (MSS 1448 B, RTT 50 ms)' font ',13'");
+plot.cmd("set grid lw 1 lc rgb '#d0d7de'");
+plot.cmd("set key top left box opaque font ',9'");
+plot.cmd("set title 'Slow start: doubling every RTT (log2 axis)' font ',11'");
+plot.cmd("set xlabel 'Time since SYN (s)'");
+plot.cmd("set ylabel 'Bytes in flight (segments of 1448 B)'");
+plot.cmd("set logscale y 2");
+plot.cmd("set xrange [0:0.32]; set yrange [1:512]");
+plot.cmd("set arrow 1 from 0, 120 to 0.32, 120 nohead dt 2 lw 1.5 lc rgb '#cf222e'");
+plot.cmd("set label 1 'path limit: 120 segments' at 0.012, 150 tc rgb '#cf222e' font ',9'");
+plot.cmd("plot 'build/examples/pcap/cwnd_flight.csv' every ::1 using 1:($2/1448.0) with points pt 7 ps 0.35 lc rgb '#0969da' title 'measured, every data segment', (x > 0.05 && x < 0.30) ? 10*2**((x-0.05)/0.05) : 1/0 with lines lw 2 dt 3 lc rgb '#1a7f37' title 'known answer 10 x 2^{(t-RTT)/RTT}'");
+plot.cmd("unset logscale y; unset arrow 1; unset label 1");
+plot.cmd("set title 'Reno sawtooth: halve on loss, +1 segment per RTT' font ',11'");
+plot.cmd("set xrange [0:6.05]; set yrange [0:185]");
+plot.cmd("set xlabel 'Time since SYN (s)'");
+plot.cmd("set ylabel 'Bytes in flight (segments)'");
+plot.cmd("set arrow 2 from 0, 120 to 6.05, 120 nohead dt 2 lw 1.5 lc rgb '#cf222e'");
+plot.cmd("unset key");
+plot.cmd("set label 3 'red markers: fast retransmit, window halves' at 0.55, 150 left tc rgb '#cf222e' font ',9'");
+plot.cmd("set label 4 'measured bytes in flight' at 3.3, 72 left tc rgb '#0969da' font ',9'");
+plot.cmd("plot 'build/examples/pcap/cwnd_flight.csv' every ::1 using 1:($2/1448.0) with points pt 7 ps 0.25 lc rgb '#0969da' title 'bytes in flight / MSS', '' every ::1 using (strcol(3) eq 'true' ? $1 : 1/0):(172) with points pt 11 ps 1.8 lc rgb '#cf222e' title 'fast retransmission (window halves)'");
+plot.cmd("unset multiplot");
+plot.close();
+end _lmcode_
+savedsl(plt, "build/examples/pcap/slow_start_cwnd_plot.dslb");
+rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/slow_start_cwnd_plot.dslb;
+assert(rp.code == 0);
+copy_file("images/slow_start_cwnd.png", "docs/images/pcap/slow_start_cwnd.png");
+print("wrote images/slow_start_cwnd.png");

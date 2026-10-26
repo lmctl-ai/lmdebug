@@ -1,0 +1,72 @@
+mkdir("build/examples/pcap");
+mkdir("images");
+mkdir("docs/images/pcap");
+
+# 1. Simulate TCP round-trip time (RTT) measurements across 3 latency tiers in lmshark
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@latest";
+let cap = shark.capture();
+
+# Stream 0: Local Redis Tier (~2.5 ms RTT)
+cap.tcp_handshake(0.000, "10.50.0.10", 41001, "10.50.1.10", 6379, 0.0025);
+# Stream 1: Regional API Tier (~18 ms RTT with periodic jitter)
+cap.tcp_handshake(0.005, "10.50.0.10", 41002, "10.50.2.20", 443, 0.018);
+# Stream 2: Cross-Region DR Replica (~62 ms baseline RTT + tail latency spike at t=1.4..1.8s)
+cap.tcp_handshake(0.010, "10.50.0.10", 41003, "10.50.3.30", 5432, 0.062);
+
+for (i in range(0, 30)) {
+    let t = 0.100 + float(i) * 0.080;
+    let seq = 1001 + i * 64;
+    let ack_next = seq + 16;
+
+    # Tier 0: Local Cache (2.2 .. 3.4 ms)
+    let rtt0 = 0.0024 + 0.0006 * sin(float(i) * 0.9);
+    cap.tcp_segment(t, "10.50.0.10", 41001, "10.50.1.10", 6379, seq, 5001, "PSH,ACK", 64240, "PING_CACHE_KEY_0");
+    cap.tcp_segment(t + rtt0, "10.50.1.10", 6379, "10.50.0.10", 41001, 5001, ack_next, "ACK", 65535, "");
+
+    # Tier 1: Regional API (16 .. 26 ms)
+    let rtt1 = 0.018 + 0.005 * sin(float(i) * 0.55) + 0.003 * cos(float(i) * 1.3);
+    cap.tcp_segment(t + 0.010, "10.50.0.10", 41002, "10.50.2.20", 443, seq, 5001, "PSH,ACK", 64240, "RPC_CALL_PAYLOAD");
+    cap.tcp_segment(t + 0.010 + rtt1, "10.50.2.20", 443, "10.50.0.10", 41002, 5001, ack_next, "ACK", 65535, "");
+
+    # Tier 2: Cross-Region DR Replica (60 ms baseline + 132 ms tail spike around i=16..20)
+    let spike = 0.0;
+    if (i >= 15 && i <= 20) {
+        let d = float(i - 17);
+        spike = 0.072 * pow(2.718281828, -0.35 * d * d);
+    }
+    let rtt2 = 0.062 + 0.007 * sin(float(i) * 0.7) + spike;
+    cap.tcp_segment(t + 0.020, "10.50.0.10", 41003, "10.50.3.30", 5432, seq, 5001, "PSH,ACK", 64240, "WAL_COMMIT_SYNC!");
+    cap.tcp_segment(t + 0.020 + rtt2, "10.50.3.30", 5432, "10.50.0.10", 41003, 5001, ack_next, "ACK", 65535, "");
+}
+
+cap.save_time_sequence_csv(0, "build/examples/pcap/rtt_tier0.csv");
+cap.save_time_sequence_csv(1, "build/examples/pcap/rtt_tier1.csv");
+cap.save_time_sequence_csv(2, "build/examples/pcap/rtt_tier2.csv");
+assert_eq(cap.tcp_stream_count(), 3);
+assert_eq(cap.max_rtt_ms() > 120.0, true);
+assert_eq(cap.min_rtt_ms() < 4.0, true);
+end _lmcode_
+savedsl(p, "build/examples/pcap/rtt_distribution.dslb");
+r = system ${dsl_cli(p)} --dsl build/examples/pcap/rtt_distribution.dslb;
+assert(r.code == 0);
+
+# 2. Plot Multi-Tier TCP ACK RTT Timeline & Tail Latency Spike in lmplot
+plt = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
+plot.png("images/rtt_distribution.png", 900, 540);
+plot.cmd("set datafile separator ','");
+plot.cmd("set grid lw 1 lc rgb '#d0d7de'");
+plot.cmd("set title 'TCP Round-Trip Time (RTT) Dissection Across 3 Service Tiers and Tail Latency Spike (lmshark)' font ',13'");
+plot.cmd("set xlabel 'Capture Time (s)'");
+plot.cmd("set ylabel 'Measured TCP ACK RTT (ms)'");
+plot.cmd("set yrange [0:168]");
+plot.cmd("set key top left box opaque");
+plot.cmd("set arrow 1 from 0.0,100.0 to 2.6,100.0 nohead lw 1.8 dt 2 lc rgb '#cf222e'");
+plot.cmd("set label 1 'SLO Threshold (100 ms)' at 0.12,105.0 tc rgb '#cf222e' font ',10'");
+plot.cmd("set label 2 'Cross-Region WAN Queuing Spike (134 ms)' at 2.02,132.0 center tc rgb '#cf222e' font ',10'");
+plot.cmd("plot 'build/examples/pcap/rtt_tier2.csv' every ::1 using ($9 > 0 ? $1 : 1/0):9 smooth unique with lines lw 2.2 lc rgb '#cf222e' notitle, 'build/examples/pcap/rtt_tier2.csv' every ::1 using ($9 > 0 ? $1 : 1/0):9 with points pt 7 ps 1.0 lc rgb '#cf222e' title 'Tier 3: Cross-Region Postgres Replica (:5432)', 'build/examples/pcap/rtt_tier1.csv' every ::1 using ($9 > 0 ? $1 : 1/0):9 smooth unique with lines lw 2.0 lc rgb '#0969da' notitle, 'build/examples/pcap/rtt_tier1.csv' every ::1 using ($9 > 0 ? $1 : 1/0):9 with points pt 5 ps 0.9 lc rgb '#0969da' title 'Tier 2: Regional API Gateway (:443)', 'build/examples/pcap/rtt_tier0.csv' every ::1 using ($9 > 0 ? $1 : 1/0):9 smooth unique with lines lw 2.0 lc rgb '#2ea043' notitle, 'build/examples/pcap/rtt_tier0.csv' every ::1 using ($9 > 0 ? $1 : 1/0):9 with points pt 9 ps 0.9 lc rgb '#2ea043' title 'Tier 1: Local Redis Session Cache (:6379)'");
+plot.close();
+end _lmcode_
+savedsl(plt, "build/examples/pcap/rtt_distribution_plot.dslb");
+rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/rtt_distribution_plot.dslb;
+assert(rp.code == 0);
+copy_file("images/rtt_distribution.png", "docs/images/pcap/rtt_distribution.png");
