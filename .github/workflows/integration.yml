@@ -1,0 +1,93 @@
+name: Released integration (all OS)
+
+on:
+  workflow_dispatch:
+    inputs:
+      lmdebug_tag:
+        description: Exact released lmdebug tag (missing native assets fail closed)
+        required: true
+        default: v0.1.36
+        type: string
+      examples_ref:
+        description: Git ref of the examples matching the released host protocol
+        required: true
+        default: v0.1.36
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: linux-x64, os: ubuntu-24.04}
+          - {name: linux-arm64, os: ubuntu-24.04-arm}
+          - {name: macos-x64, os: macos-15-intel}
+          - {name: macos-arm64, os: macos-15}
+          - {name: windows-x64, os: windows-2022}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with: {node-version: 24}
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with: {python-version: '3.12'}
+      - name: Install the released v5 and v6 compilers
+        run: |
+          npm install --global @lmctl-ai/lmctl@0.2.426
+          npm install --prefix "$RUNNER_TEMP/lmmock-compiler" @lmctl-ai/lmctl@0.2.448
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          compiler = Path(os.environ['RUNNER_TEMP'])/'lmmock-compiler/node_modules/.bin'/('lmscript.cmd' if os.name=='nt' else 'lmscript')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as out:
+              out.write('MOCK_COMPILER='+str(compiler)+'\n')
+          PY
+      - name: Provide the Python executable spelling used by examples
+        run: |
+          python - <<'PYTHON_ALIAS'
+          import os, shutil, sys
+          from pathlib import Path
+          if os.name == 'nt':
+              alias = Path(sys.executable).with_name('python3.exe')
+              if not alias.exists():
+                  shutil.copy2(sys.executable, alias)
+          PYTHON_ALIAS
+      - name: Local runner contracts
+        run: bash test.sh
+      - name: Execute released examples and real loopback traffic
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LMDEBUG_TAG: ${{ inputs.lmdebug_tag }}
+          EXAMPLES_REF: ${{ inputs.examples_ref }}
+          # Pktmon only supports removing all filters; this is a fresh hosted VM.
+          LMDEBUG_PKTMON_EXCLUSIVE: '1'
+        run: |
+          python scripts/integration-run.py --lmdebug-tag "$LMDEBUG_TAG" --examples-ref "$EXAMPLES_REF" \
+            --mock-compiler "$MOCK_COMPILER" --sudo-capture \
+            --report out/integration-report.json --summary "$GITHUB_STEP_SUMMARY"
+      - name: Reports and generated witnesses
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: integration-${{ matrix.name }}
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            out/integration-report.json
+            out/integration/traffic-report.json
+            out/integration/traffic/loopback.*
+            out/integration/traffic/analysis.json
+            out/integration/examples/build/**
+            out/integration/examples/images/**

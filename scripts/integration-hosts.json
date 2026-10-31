@@ -1,0 +1,8 @@
+{
+  "lmdebug": {"repo": "lmctl-ai/lmdebug", "tag": "v0.1.36"},
+  "lmmock": {"repo": "lmctl-ai/lmmock", "tag": "v0.1.36"},
+  "lmconn": {"repo": "lmctl-ai/lmconn", "tag": "v0.1.0"},
+  "lmplot": {"repo": "lmctl-ai/lmplot", "tag": "v0.2.1"},
+  "lmdraw": {"repo": "lmctl-ai/lmdraw", "tag": "v0.2.6"},
+  "lmssl": {"repo": "lmctl-ai/lmssl", "tag": "v0.2.0"}
+}

@@ -1,0 +1,2 @@
+Benign integration input for the embedded test-marker rule.
+LMDEBUG-YARA-TEST-MARKER-7F454C46

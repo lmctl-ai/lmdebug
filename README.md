@@ -1,6 +1,6 @@
 # lmdebug
 
-> The public README, docs, and examples for `lmdebug` are MIT under `LICENSE-examples`. Binary releases use `LICENSE`; implementation source and its history are maintained privately in `lmctlhq/lmdebug`.
+> The public README, docs, examples, and integration harness/workflows for `lmdebug` are MIT under `LICENSE-examples`. Binary releases use `LICENSE`; implementation source and its history are maintained privately in `lmctlhq/lmdebug`.
 
 **Linux network, system, process, packet-capture, and detection introspection in one self-contained executable, scripted from lmscript: structured JSON on the CLI, typed contexts (`net`, `sys`, `proc`, `detect`, `shark`) in the DSL, and an audited dry-run-by-default mutation framework.**
 
@@ -236,3 +236,10 @@ usage: lmdebug --version | caps | sys ... | proc ... | detect ... | pcap ... | -
 
 The README, docs, and `examples/*.lms` are MIT-licensed under [`LICENSE-examples`](LICENSE-examples).
 Binary releases are licensed under [`LICENSE`](LICENSE) (Lattice Systems Binary License 1.0). Third-party components remain under their own licenses and notices in [`THIRD_PARTY_NOTICES`](THIRD_PARTY_NOTICES).
+
+## Manual all-OS released integration
+
+[INTEGRATION.md](INTEGRATION.md) describes the five native runner legs, pinned
+released hosts, v5/v6 compilers, real loopback HTTP/iperf/capture witnesses, and
+fail-closed reports. Run `./test.sh` for offline runner contracts. Integration is
+manual-only; missing platform assets and unsupported capture paths fail visibly.
