@@ -191,7 +191,7 @@ let s = net.socket_summary("");
 println("listening sockets: " + str(s.listening()));
 end _lmcode_
 savedsl(p, "show.dslb");
-r = system ${dsl_cli(p)} --dsl show.dslb;
+r = system ${dsl_cli(p)} --lmcode show.dslb;
 for (l in lines(r.stdout)) { println(l); }
 assert(r.code == 0);
 ```
@@ -214,7 +214,7 @@ See [`docs/cli-and-dsl.md`](docs/cli-and-dsl.md) for the complete CLI and DSL re
 | Detection & remediation | `detect scan`, `detect autoruns`, `detect hashes import\|scan\|status`, `detect quarantine`, `detect restore` | `context detect: Detect` — `scan`, `autoruns`, `hash_import`, `hashes_scan`, `quarantine`, `restore` |
 | Packet capture & analysis | `lmdebug pcap` | `context shark: Shark` — pcap/pcapng readers/writers, packet builders, dissectors, flows, TCP streams, display/cBPF filters, `interfaces`, `compile_filter`, `live` |
 
-The full list of signatures: `lmdebug --dsl-signatures` (and `lmdebug pcap --dsl-signatures`); the schema: `lmdebug --dsl-schema --json` (and `lmdebug pcap --dsl-schema --json`).
+The full list of signatures: `lmdebug --lmcode-signatures` (and `lmdebug pcap --lmcode-signatures`); the schema: `lmdebug --lmcode-schema --json` (and `lmdebug pcap --lmcode-schema --json`).
 
 ## Honest limits
 
@@ -226,10 +226,10 @@ The full list of signatures: `lmdebug --dsl-signatures` (and `lmdebug pcap --dsl
 
 ## Resource limits
 
-A program may use at most 4096 MiB in total; beyond that it stops with a run error (exit 3) naming the limit instead of exhausting the machine. Set `LMDEBUG_MAX_MEMORY_MB` to change it (a positive whole number; anything else is a usage error, exit 2). `lmdebug --dry-run --dsl prog.dslb` runs a program without mutating host state and prints the `lmscript.host_plan.v1` effect plan.
+A program may use at most 4096 MiB in total; beyond that it stops with a run error (exit 3) naming the limit instead of exhausting the machine. Set `LMDEBUG_MAX_MEMORY_MB` to change it (a positive whole number; anything else is a usage error, exit 2). `lmdebug --dry-run --lmcode prog.dslb` runs a program without mutating host state and prints the `lmscript.host_plan.v1` effect plan.
 
 ```text
-usage: lmdebug --version | caps | sys ... | proc ... | detect ... | pcap ... | --dsl-schema [--json] | --dsl-signatures | [--dry-run] --dsl FILE [FILE ...]
+usage: lmdebug --version | caps | sys ... | proc ... | detect ... | pcap ... | --lmcode-schema [--json] | --lmcode-signatures | [--dry-run] --lmcode FILE [FILE ...]
 ```
 
 ## License

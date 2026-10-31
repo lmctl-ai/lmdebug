@@ -37,7 +37,7 @@ let verify_json = "{\n"
 fs.write("build/examples/correlation/offline/lmssl_verify.json", verify_json);
 end _lmcode_
 savedsl(ssl_prog, "build/examples/correlation/offline/ssl_verify.dslb");
-r_ssl = system ${dsl_cli(ssl_prog)} --dsl build/examples/correlation/offline/ssl_verify.dslb;
+r_ssl = system ${dsl_cli(ssl_prog)} --lmcode build/examples/correlation/offline/ssl_verify.dslb;
 if (r_ssl.code != 0) {
     print(r_ssl.stdout + r_ssl.stderr);
 }
@@ -62,7 +62,7 @@ cap.save_packets_csv("build/examples/correlation/offline/dissected_packets.csv")
 cap.save_json("build/examples/correlation/offline/dissected_summary.json");
 end _lmcode_
 savedsl(pcap_prog, "build/examples/correlation/offline/pcap_dissect.dslb");
-r_pcap = system ${dsl_cli(pcap_prog)} --dsl build/examples/correlation/offline/pcap_dissect.dslb;
+r_pcap = system ${dsl_cli(pcap_prog)} --lmcode build/examples/correlation/offline/pcap_dissect.dslb;
 if (r_pcap.code != 0) {
     print(r_pcap.stdout + r_pcap.stderr);
 }

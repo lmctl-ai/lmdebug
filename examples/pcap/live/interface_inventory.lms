@@ -22,7 +22,7 @@ file_write("build/examples/pcap/live/interface_inventory.csv", rows);
 print("interfaces=" + str(devices.len()));
 end _lmcode_
 savedsl(p, "build/examples/pcap/live/interface_inventory.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/live/interface_inventory.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/live/interface_inventory.dslb;
 assert(r.code == 0);
 
 plt = _lmcode_ cli="lmplot" install="github:lmctl-ai/lmplot@latest";
@@ -36,6 +36,6 @@ plot.cmd("plot 'build/examples/pcap/live/interface_inventory.csv' every ::1 usin
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/live/interface_inventory_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/live/interface_inventory_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/live/interface_inventory_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/interface_inventory.png", "docs/images/pcap/live/interface_inventory.png");

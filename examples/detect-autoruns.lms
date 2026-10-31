@@ -1,6 +1,6 @@
 # Chapter: Detection - Persistence and autoruns enumeration across systemd, cron, shell rc, and ld.so
 # Shows: detect.autoruns, AutorunList.len/at/root/suspicious_count/skipped/error, Autorun.location/kind/name/enabled/nonempty/suspicion/exec_lines
-# Run: lmscript examples/detect-autoruns.lms   (then: lmdebug --dsl build/detect-autoruns.dslb)
+# Run: lmscript examples/detect-autoruns.lms   (then: lmdebug --lmcode build/detect-autoruns.dslb)
 # Needs: nothing (offline); enumerates standard Linux persistence locations under /.
 # exit: 0
 # expect:

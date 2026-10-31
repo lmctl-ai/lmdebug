@@ -123,7 +123,7 @@ assert_eq(c.retransmission_count(), fastrtx);
 c.save_fields_csv("tcp.dstport == 5201 && tcp.len > 0", "frame.time,tcp.analysis.bytes_in_flight,tcp.analysis.fast_retransmission", "build/examples/pcap/cwnd_flight.csv");
 end _lmcode_
 savedsl(p, "build/examples/pcap/slow_start_cwnd.dslb");
-rs = system ${dsl_cli(p)} --dsl build/examples/pcap/slow_start_cwnd.dslb;
+rs = system ${dsl_cli(p)} --lmcode build/examples/pcap/slow_start_cwnd.dslb;
 if (rs.code != 0) {
   print(rs.stdout + rs.stderr);
 }
@@ -157,7 +157,7 @@ plot.cmd("unset multiplot");
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/slow_start_cwnd_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/slow_start_cwnd_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/slow_start_cwnd_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/slow_start_cwnd.png", "docs/images/pcap/slow_start_cwnd.png");
 print("wrote images/slow_start_cwnd.png");

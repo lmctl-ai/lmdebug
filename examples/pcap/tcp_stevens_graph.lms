@@ -64,7 +64,7 @@ assert_eq(cap.retransmission_count() >= 2, true);
 assert_eq(cap.dup_ack_count() >= 2, true);
 end _lmcode_
 savedsl(p, "build/examples/pcap/tcp_stevens.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/tcp_stevens.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/tcp_stevens.dslb;
 assert(r.code == 0);
 
 # 2. Plot Stevens Time-Sequence & Receive Window / RTT Graph in lmplot
@@ -95,6 +95,6 @@ plot.cmd("unset multiplot");
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/tcp_stevens_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/tcp_stevens_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/tcp_stevens_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/tcp_stevens_graph.png", "docs/images/pcap/tcp_stevens_graph.png");

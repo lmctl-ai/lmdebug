@@ -60,7 +60,7 @@ assert_eq(cap.tcp_stream_bytes(0, "c2s"), 2560);
 cap.save_time_sequence_csv(0, "build/examples/pcap/tcp_seqwrap_ecn.csv");
 end _lmcode_
 savedsl(p, "build/examples/pcap/tcp_seqwrap_ecn.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/tcp_seqwrap_ecn.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/tcp_seqwrap_ecn.dslb;
 assert(r.code == 0);
 
 # 2. Plot Continuous Relative Sequence Across 2^32 Wrap & ECN Window Control in lmplot
@@ -85,6 +85,6 @@ plot.cmd("plot 'build/examples/pcap/tcp_seqwrap_ecn.csv' every ::1 using 1:($3 >
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/tcp_seqwrap_ecn_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/tcp_seqwrap_ecn_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/tcp_seqwrap_ecn_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/tcp_seqwrap_and_ecn.png", "docs/images/pcap/tcp_seqwrap_and_ecn.png");

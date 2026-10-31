@@ -46,7 +46,7 @@ assert_eq(t13.pkt_field(3, "tls.version"), "TLS 1.3");
 assert_eq(t12.pkt_field(3, "tls.version"), "TLS 1.2");
 end _lmcode_
 savedsl(p, "build/examples/pcap/quic_vs_tls.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/quic_vs_tls.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/quic_vs_tls.dslb;
 assert(r.code == 0);
 
 # 2. Plot Cumulative Wire Bytes vs WAN Time (QUIC v2 vs TLS 1.3 vs TLS 1.2) in lmplot
@@ -70,6 +70,6 @@ plot.cmd("plot 'build/examples/pcap/wan_quic_v2.csv' every ::1 using 1:3 smooth 
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/quic_vs_tls_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/quic_vs_tls_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/quic_vs_tls_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/quic_vs_tls_handshake.png", "docs/images/pcap/quic_vs_tls_handshake.png");

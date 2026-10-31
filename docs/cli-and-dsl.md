@@ -12,8 +12,8 @@ lmdebug sys mem                                  # memory, swap, and pressure
 lmdebug sys set KEY=VALUE [--apply] [--force] [--if-match ID] [--audit-file PATH]
 lmdebug sys disk [--interval MS] [--count N]     # per-device I/O rates, await, and pressure
 lmdebug sys top [--interval MS] [--count N] [--top N] [--sort cpu|mem|disk]
-lmdebug --dsl-schema [--json]
-lmdebug --dsl-signatures
+lmdebug --lmcode-schema [--json]
+lmdebug --lmcode-signatures
 lmdebug ping HOST [iputils ping options]        # the real iputils ping engine
 lmdebug tracepath HOST [-m hops] [-l len] [-n]  # native trace --pmtu alias (JSON)
 lmdebug iperf3 [iperf3 options]                 # the real iperf3 engine (client/server)
@@ -43,8 +43,8 @@ lmdebug detect quarantine PATH [--quarantine-dir DIR] [--rule NAME:SEVERITY] [--
 lmdebug detect restore ID [--quarantine-dir DIR] [--apply] [--force]
 lmdebug detect scan PATH [--rules PATH] [--max-size MB]  # YARA file/directory scan with builtin or custom rules as JSON
 lmdebug detect autoruns [--root DIR] [--json]  # Linux persistence location enumeration as JSON
-lmdebug pcap [--version | --dsl-schema [--json] | --dsl-signatures | [--dry-run] --dsl FILE]
-lmdebug [--dry-run] [--plan-format json|text] [--dry-loop-limit N] --dsl FILE [FILE ...]
+lmdebug pcap [--version | --lmcode-schema [--json] | --lmcode-signatures | [--dry-run] --lmcode FILE]
+lmdebug [--dry-run] [--plan-format json|text] [--dry-loop-limit N] --lmcode FILE [FILE ...]
 ```
 
 ## Capabilities (`lmdebug caps` / `lmdebug.caps_json()`)
@@ -103,4 +103,4 @@ Mutating verbs (`link.set`, `sys.set`, `proc.kill`, `detect.hash_import`, `detec
 - `--apply` re-reads state, writes an intent record to the append-only JSONL audit log, performs the mutation, verifies the post-state, and writes an outcome audit record.
 - `--force` unlocks destructive or out-of-range operations (`needs_force: true`).
 - `--if-match sha256:<64hex>` requires the fresh `plan_id` at apply time to match the approved plan ID (exiting `6` on drift).
-- `lmdebug --dry-run [--plan-format json|text] [--dry-loop-limit N] --dsl FILE.dslb` runs DSL bytecode in host-effect dry-run mode and emits the `lmscript` host-effect plan envelope (`lmscript.host_plan.v1`) without mutating the system.
+- `lmdebug --dry-run [--plan-format json|text] [--dry-loop-limit N] --lmcode FILE.dslb` runs DSL bytecode in host-effect dry-run mode and emits the `lmscript` host-effect plan envelope (`lmscript.host_plan.v1`) without mutating the system.

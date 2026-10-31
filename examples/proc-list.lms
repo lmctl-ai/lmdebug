@@ -1,6 +1,6 @@
 # Chapter: Process - process enumeration
 # Shows: proc.list, ProcList.len/at, ProcInfo.pid/ppid/user/name/state/rss_bytes/fd_count/cmdline
-# Run: lmscript examples/proc-list.lms      (then: lmdebug --dsl build/proc-list.dslb)
+# Run: lmscript examples/proc-list.lms      (then: lmdebug --lmcode build/proc-list.dslb)
 # Needs: nothing (offline); /proc is always available on Linux.
 # exit: 0
 # expect:

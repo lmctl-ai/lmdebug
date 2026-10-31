@@ -74,7 +74,7 @@ c.save_fields_csv("tcp.dstport == 443 && tcp.len > 0", "frame.time,tcp.rel_seq,t
 c.save_fields_csv("tcp.analysis.duplicate_ack || tcp.analysis.retransmission", "frame.time,tcp.analysis.duplicate_ack,tcp.analysis.fast_retransmission", "build/examples/pcap/storm_events.csv");
 end _lmcode_
 savedsl(p, "build/examples/pcap/retransmission_storm.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/retransmission_storm.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/retransmission_storm.dslb;
 if (r.code != 0) {
   print(r.stdout + r.stderr);
 }
@@ -121,7 +121,7 @@ plot.cmd("unset multiplot");
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/retransmission_storm_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/retransmission_storm_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/retransmission_storm_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/retransmission_storm.png", "docs/images/pcap/retransmission_storm.png");
 print("wrote images/retransmission_storm.png");

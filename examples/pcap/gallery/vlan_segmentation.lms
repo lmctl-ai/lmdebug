@@ -53,7 +53,7 @@ v99.save_io_graph_csv(0.10, "build/examples/pcap/vlan99_io.csv");
 assert_eq(v10.packet_count() + v20.packet_count() + v30.packet_count() + v99.packet_count(), cap.packet_count());
 end _lmcode_
 savedsl(p, "build/examples/pcap/vlan_segmentation.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/vlan_segmentation.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/vlan_segmentation.dslb;
 assert(r.code == 0);
 
 # 2. Plot Multi-Tenant 802.1Q VLAN Traffic Segmentation in lmplot
@@ -71,6 +71,6 @@ plot.cmd("plot 'build/examples/pcap/vlan10_io.csv' every ::1 using 1:4 with line
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/vlan_segmentation_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/vlan_segmentation_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/vlan_segmentation_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/vlan_segmentation.png", "docs/images/pcap/vlan_segmentation.png");

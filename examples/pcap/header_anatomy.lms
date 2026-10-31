@@ -35,7 +35,7 @@ assert_eq(c.pkt_field(0, "tcp.options.wscale.shift"), "7");
 c.save_pcap("build/examples/pcap/header_anatomy.pcap");
 end _lmcode_
 savedsl(p, "build/examples/pcap/header_anatomy.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/header_anatomy.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/header_anatomy.dslb;
 if (r.code != 0) {
   print(r.stdout + r.stderr);
 }
@@ -140,7 +140,7 @@ scene.text(480.0, y + 72.0, 12.0, "Offset 10 x 4 = 40-byte TCP header; the recei
 scene.render_png("build/rendered/header_anatomy.png", 960, 890, 1);
 end _lmcode_
 savedsl(draw, "build/examples/pcap/header_anatomy_draw.dslb");
-rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/header_anatomy_draw.dslb;
+rd = system ${dsl_cli(draw)} --lmcode build/examples/pcap/header_anatomy_draw.dslb;
 assert(rd.code == 0);
 copy_file("build/rendered/header_anatomy.png", "images/header_anatomy.png");
 copy_file("build/rendered/header_anatomy.png", "docs/images/pcap/header_anatomy.png");

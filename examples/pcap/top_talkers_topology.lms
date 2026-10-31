@@ -63,7 +63,7 @@ assert_close(cap.tcp_stream_rtt_ms(1), 4.0, 0.05);
 assert_eq(cap.flow_count(), 8);
 end _lmcode_
 savedsl(p, "build/examples/pcap/top_talkers.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/top_talkers.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/top_talkers.dslb;
 assert(r.code == 0);
 
 # 2. Render Network Flow & Top-Talkers Topology Diagram in lmdraw
@@ -144,7 +144,7 @@ scene.text(644.0, 187.0, 12.0, "4. 10.40.3.40 (Postgres) 2.5 kB", "#56d364");
 scene.render_png("build/rendered/top_talkers_topology.png", 900, 580, 1);
 end _lmcode_
 savedsl(draw, "build/examples/pcap/top_talkers_draw.dslb");
-rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/top_talkers_draw.dslb;
+rd = system ${dsl_cli(draw)} --lmcode build/examples/pcap/top_talkers_draw.dslb;
 assert(rd.code == 0);
 copy_file("build/rendered/top_talkers_topology.png", "images/top_talkers_topology.png");
 copy_file("build/rendered/top_talkers_topology.png", "docs/images/pcap/top_talkers_topology.png");

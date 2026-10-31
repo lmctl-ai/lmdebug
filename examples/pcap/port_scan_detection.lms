@@ -61,7 +61,7 @@ c.save_field_counts_csv(bare_syn, "ip.src", "build/examples/pcap/scan_syn_by_src
 c.save_fields_csv("tcp.flags.syn == 1 && tcp.flags.ack == 1 && ip.dst in {203.0.113.66 198.51.100.77}", "frame.time,ip.src,tcp.srcport", "build/examples/pcap/scan_open.csv");
 end _lmcode_
 savedsl(p, "build/examples/pcap/port_scan_detection.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/port_scan_detection.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/port_scan_detection.dslb;
 if (r.code != 0) {
   print(r.stdout + r.stderr);
 }
@@ -92,7 +92,7 @@ plot.cmd("unset multiplot");
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/port_scan_detection_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/port_scan_detection_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/port_scan_detection_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/port_scan_detection.png", "docs/images/pcap/port_scan_detection.png");
 print("wrote images/port_scan_detection.png");

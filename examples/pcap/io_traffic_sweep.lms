@@ -46,7 +46,7 @@ cap.save_io_graph_csv(0.10, "build/examples/pcap/io_graph.csv");
 assert_eq(cap.retransmission_count() > 25, true);
 end _lmcode_
 savedsl(p, "build/examples/pcap/io_traffic_sweep.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/io_traffic_sweep.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/io_traffic_sweep.dslb;
 assert(r.code == 0);
 
 # 2. Render static dual-panel I/O Graph in lmplot
@@ -79,7 +79,7 @@ plot.cmd("unset multiplot");
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/io_static_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/io_static_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/io_static_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/io_traffic_burst.png", "docs/images/pcap/io_traffic_burst.png");
 
@@ -107,7 +107,7 @@ for (f in range(0, 24)) {
 }
 end _lmcode_
 savedsl(anim, "build/examples/pcap/io_anim_plot.dslb");
-ra = system ${dsl_cli(anim)} --dsl build/examples/pcap/io_anim_plot.dslb;
+ra = system ${dsl_cli(anim)} --lmcode build/examples/pcap/io_anim_plot.dslb;
 assert(ra.code == 0);
 
 # Package the frames with the original standard-library-only example helper.

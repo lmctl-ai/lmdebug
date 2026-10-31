@@ -39,7 +39,7 @@ assert_eq(verified.pkt_field(8, "tls.version"), "TLS 1.3");
 verified.save_packets_csv("build/examples/pcap/protocol_ladder_packets.csv");
 end _lmcode_
 savedsl(p, "build/examples/pcap/protocol_ladder.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/protocol_ladder.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/protocol_ladder.dslb;
 assert(r.code == 0);
 
 # 2. Render the dissected Protocol Sequence Ladder Diagram with lmdraw
@@ -117,7 +117,7 @@ scene.text(450.0, 529.0, 12.0, "t=78ms HTTP/1.1 200 OK application/json {\"statu
 scene.render_png("build/rendered/protocol_sequence_ladder.png", 900, 620, 1);
 end _lmcode_
 savedsl(draw, "build/examples/pcap/protocol_ladder_draw.dslb");
-rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/protocol_ladder_draw.dslb;
+rd = system ${dsl_cli(draw)} --lmcode build/examples/pcap/protocol_ladder_draw.dslb;
 assert(rd.code == 0);
 copy_file("build/rendered/protocol_sequence_ladder.png", "images/protocol_sequence_ladder.png");
 copy_file("build/rendered/protocol_sequence_ladder.png", "docs/images/pcap/protocol_sequence_ladder.png");

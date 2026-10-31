@@ -1,7 +1,7 @@
 # Chapter: Diagnostics - repeated traceroute
 # Shows: net.mtr, MtrResult dest_ip/error/cycles/hops, MtrHopList len/at,
 #        MtrHop ttl/host/loss_pct/avg_ms/reached
-# Run: lmscript examples/mtr.lms      (then: lmdebug --dsl build/mtr.dslb)
+# Run: lmscript examples/mtr.lms      (then: lmdebug --lmcode build/mtr.dslb)
 # Needs: CAP_NET_RAW (or root) for real probes; without it net.mtr returns
 #        the permission error as data and the script still reaches the marker.
 # exit: 0

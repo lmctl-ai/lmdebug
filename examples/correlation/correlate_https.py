@@ -1478,7 +1478,7 @@ savedsl(p, "{dslb.as_posix()}");
                 encoding="utf-8",
             )
             subprocess.run([str(compiler_bin), str(lms)], env=env, check=True, stdout=subprocess.DEVNULL)
-            subprocess.run([str(lmssl_bin), "--dsl", str(dslb)], env=env, check=True, stdout=subprocess.DEVNULL)
+            subprocess.run([str(lmssl_bin), "--lmcode", str(dslb)], env=env, check=True, stdout=subprocess.DEVNULL)
 
     cert_pem = cert_path.read_text(encoding="utf-8").strip()
 
@@ -1534,7 +1534,7 @@ savedsl(p, "{dslb.as_posix()}");
             encoding="utf-8",
         )
         subprocess.run([str(compiler_bin), str(lms)], env=env, check=True, stdout=subprocess.DEVNULL)
-        subprocess.run([str(lmdebug_bin), "pcap", "--dsl", str(dslb)], env=env, check=True, stdout=subprocess.DEVNULL)
+        subprocess.run([str(lmdebug_bin), "pcap", "--lmcode", str(dslb)], env=env, check=True, stdout=subprocess.DEVNULL)
 
     # 3. Deterministic OpenSSL 4.0.3 SSL_trace fixture matching the exchange
     trace_text = f"""Sent TLS Record
@@ -1754,11 +1754,11 @@ def run_offline_correlation(
     }
     if lmdebug_bin and lmdebug_bin.is_file():
         v = subprocess.check_output([str(lmdebug_bin), "pcap", "--version"], text=True).strip()
-        s = subprocess.check_output([str(lmdebug_bin), "pcap", "--dsl-schema", "--json"])
+        s = subprocess.check_output([str(lmdebug_bin), "pcap", "--lmcode-schema", "--json"])
         manifest["tools"]["lmdebug_pcap_version"] = v
         manifest["tools"]["lmdebug_pcap_schema_sha256"] = sha256_bytes(s)
     if lmssl_bin and lmssl_bin.is_file():
-        s = subprocess.check_output([str(lmssl_bin), "--dsl-schema", "--json"])
+        s = subprocess.check_output([str(lmssl_bin), "--lmcode-schema", "--json"])
         manifest["tools"]["lmssl_schema_sha256"] = sha256_bytes(s)
 
     rows = load_dissected_fields_csv(dissected_csv)
@@ -1820,7 +1820,7 @@ savedsl(p, "{dslb.as_posix()}");
             encoding="utf-8",
         )
         subprocess.run([str(compiler_bin), str(lms)], env=env, check=True, stdout=subprocess.DEVNULL)
-        subprocess.run([str(lmdebug_bin), "pcap", "--dsl", str(dslb)], env=env, check=True, stdout=subprocess.DEVNULL)
+        subprocess.run([str(lmdebug_bin), "pcap", "--lmcode", str(dslb)], env=env, check=True, stdout=subprocess.DEVNULL)
         return load_dissected_fields_csv(csv_out)
 
     base_manifest = {
@@ -2058,7 +2058,7 @@ def check_linux_capture_privilege(lmdebug_bin: pathlib.Path, compiler_bin: pathl
             encoding="utf-8",
         )
         subprocess.run([str(compiler_bin), str(lms)], env=env, check=True, stdout=subprocess.DEVNULL)
-        cp = subprocess.run([str(lmdebug_bin), "pcap", "--dsl", str(dslb)], env=env, capture_output=True, text=True, timeout=5)
+        cp = subprocess.run([str(lmdebug_bin), "pcap", "--lmcode", str(dslb)], env=env, capture_output=True, text=True, timeout=5)
         if cp.returncode == 0:
             return True, "lmdebug binary file capability CAP_NET_RAW"
         return False, (cp.stderr or cp.stdout).strip()
@@ -2077,7 +2077,7 @@ def discover_interfaces(
         out_txt = td_p / "ifaces.txt"
         if precompiled_dslb and precompiled_dslb.is_file():
             cp = subprocess.run(
-                [str(lmdebug_bin), "pcap", "--dsl", str(precompiled_dslb)],
+                [str(lmdebug_bin), "pcap", "--lmcode", str(precompiled_dslb)],
                 env=env,
                 capture_output=True,
                 text=True,
@@ -2101,7 +2101,7 @@ savedsl(p, "{dslb.as_posix()}");
             )
             subprocess.run([str(compiler_bin), str(lms)], env=env, check=True, stdout=subprocess.DEVNULL)
             cp = subprocess.run(
-                [str(lmdebug_bin), "pcap", "--dsl", str(dslb)],
+                [str(lmdebug_bin), "pcap", "--lmcode", str(dslb)],
                 env=env,
                 capture_output=True,
                 text=True,
@@ -2173,9 +2173,9 @@ def run_live_capture_workflow(
 
     # Step 2: Preflight tool & schema checks
     lmdebug_ver = subprocess.check_output([str(lmdebug_bin), "pcap", "--version"], text=True).strip()
-    lmdebug_schema = subprocess.check_output([str(lmdebug_bin), "pcap", "--dsl-schema", "--json"])
+    lmdebug_schema = subprocess.check_output([str(lmdebug_bin), "pcap", "--lmcode-schema", "--json"])
     lmssl_ver = subprocess.check_output([str(lmssl_bin), "--version"], text=True).strip()
-    lmssl_schema = subprocess.check_output([str(lmssl_bin), "--dsl-schema", "--json"])
+    lmssl_schema = subprocess.check_output([str(lmssl_bin), "--lmcode-schema", "--json"])
     if b'"monotonic_us"' not in lmssl_schema:
         raise RuntimeError("Staged lmssl binary does not expose ssl.monotonic_us() in its schema")
 
@@ -2319,7 +2319,7 @@ savedsl(p, "{client_dslb.as_posix()}");
 
         # Step 4: Start capture child process
         cap_proc = subprocess.Popen(
-            [str(lmdebug_bin), "pcap", "--dsl", str(cap_dslb)],
+            [str(lmdebug_bin), "pcap", "--lmcode", str(cap_dslb)],
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -2334,7 +2334,7 @@ savedsl(p, "{client_dslb.as_posix()}");
 
             # Step 6: Run measured HTTPS request
             client_cp = subprocess.run(
-                [str(lmssl_bin), "--dsl", str(client_dslb)],
+                [str(lmssl_bin), "--lmcode", str(client_dslb)],
                 env=env,
                 capture_output=True,
                 text=True,
@@ -2500,7 +2500,7 @@ savedsl(p, "{cert_dslb.as_posix()}");
             encoding="utf-8",
         )
         subprocess.run([str(compiler_bin), str(cert_lms)], env=env, check=True, stdout=subprocess.DEVNULL)
-        subprocess.run([str(lmssl_bin), "--dsl", str(cert_dslb)], env=env, check=True, stdout=subprocess.DEVNULL)
+        subprocess.run([str(lmssl_bin), "--lmcode", str(cert_dslb)], env=env, check=True, stdout=subprocess.DEVNULL)
 
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         ctx.minimum_version = ssl.TLSVersion.TLSv1_3

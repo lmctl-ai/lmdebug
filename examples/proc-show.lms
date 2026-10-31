@@ -1,6 +1,6 @@
 # Chapter: Process - deep process inspection and dry-run signal plan
 # Shows: proc.show, ProcShow.pid/name/state/uid/gid/threads/limits/fds/net/maps/error, proc.kill, Change.action/dry_run/applied
-# Run: lmscript examples/proc-show.lms      (then: lmdebug --dsl build/proc-show.dslb)
+# Run: lmscript examples/proc-show.lms      (then: lmdebug --lmcode build/proc-show.dslb)
 # Needs: nothing (offline); /proc is always available on Linux and proc.kill without --apply is a dry run.
 # exit: 0
 # expect:

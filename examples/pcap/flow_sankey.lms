@@ -63,7 +63,7 @@ assert_eq(c.unique_hosts() > 60, true);
 c.save_flows_csv("build/examples/pcap/flow_sankey_flows.csv");
 end _lmcode_
 savedsl(p, "build/examples/pcap/flow_sankey.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/flow_sankey.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/flow_sankey.dslb;
 if (r.code != 0) {
   print(r.stdout + r.stderr);
 }
@@ -116,7 +116,7 @@ scene.text(480.0, 742.0, 12.0, "Moving the 600 kB backup to off-hours frees 35 %
 scene.render_png("build/rendered/flow_sankey.png", 960, 760, 1);
 end _lmcode_
 savedsl(draw, "build/examples/pcap/flow_sankey_draw.dslb");
-rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/flow_sankey_draw.dslb;
+rd = system ${dsl_cli(draw)} --lmcode build/examples/pcap/flow_sankey_draw.dslb;
 assert(rd.code == 0);
 copy_file("build/rendered/flow_sankey.png", "images/flow_sankey.png");
 copy_file("build/rendered/flow_sankey.png", "docs/images/pcap/flow_sankey.png");

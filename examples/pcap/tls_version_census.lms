@@ -77,7 +77,7 @@ c.save_field_counts_csv(ch + " && tls.version in {\"TLS 1.0\" \"TLS 1.1\"}", "tl
 c.save_fields_csv(ch + " && tls.version in {\"TLS 1.0\" \"TLS 1.1\"}", "ip.src,tls.sni,tls.version", "build/examples/pcap/tls_legacy.csv");
 end _lmcode_
 savedsl(p, "build/examples/pcap/tls_version_census.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/tls_version_census.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/tls_version_census.dslb;
 if (r.code != 0) {
   print(r.stdout + r.stderr);
 }
@@ -112,7 +112,7 @@ plot.cmd("unset multiplot");
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/tls_version_census_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/tls_version_census_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/tls_version_census_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/tls_version_census.png", "docs/images/pcap/tls_version_census.png");
 print("wrote images/tls_version_census.png");

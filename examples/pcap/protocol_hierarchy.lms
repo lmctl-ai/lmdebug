@@ -57,7 +57,7 @@ assert_eq(cap.protocol_packets("TLS"), 22);
 assert_eq(cap.protocol_bytes("QUIC"), 33684);
 end _lmcode_
 savedsl(p, "build/examples/pcap/protocol_hierarchy.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/protocol_hierarchy.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/protocol_hierarchy.dslb;
 assert(r.code == 0);
 
 # 2. Plot Protocol Hierarchy Breakdown (Bytes % and Packet Count) in lmplot
@@ -93,6 +93,6 @@ plot.cmd("unset multiplot");
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/protocol_hierarchy_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/protocol_hierarchy_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/protocol_hierarchy_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/protocol_hierarchy.png", "docs/images/pcap/protocol_hierarchy.png");

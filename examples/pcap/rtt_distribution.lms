@@ -47,7 +47,7 @@ assert_eq(cap.max_rtt_ms() > 120.0, true);
 assert_eq(cap.min_rtt_ms() < 4.0, true);
 end _lmcode_
 savedsl(p, "build/examples/pcap/rtt_distribution.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/rtt_distribution.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/rtt_distribution.dslb;
 assert(r.code == 0);
 
 # 2. Plot Multi-Tier TCP ACK RTT Timeline & Tail Latency Spike in lmplot
@@ -67,6 +67,6 @@ plot.cmd("plot 'build/examples/pcap/rtt_tier2.csv' every ::1 using ($9 > 0 ? $1 
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/rtt_distribution_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/rtt_distribution_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/rtt_distribution_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/rtt_distribution.png", "docs/images/pcap/rtt_distribution.png");

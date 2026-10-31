@@ -50,7 +50,7 @@ assert_eq(c.retransmission_count(), 0);
 c.save_pcapng("build/examples/pcap/tcp_handshake_teardown.pcapng");
 end _lmcode_
 savedsl(p, "build/examples/pcap/tcp_handshake_teardown.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/tcp_handshake_teardown.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/tcp_handshake_teardown.dslb;
 assert(r.code == 0);
 
 draw = _lmcode_ cli="lmdraw" install="github:lmctl-ai/lmdraw@latest";
@@ -104,7 +104,7 @@ scene.render_png("build/rendered/tcp_handshake_teardown.png", 960, 790, 1);
 end _lmcode_
 mkdir("build/rendered");
 savedsl(draw, "build/examples/pcap/tcp_handshake_teardown_draw.dslb");
-rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/tcp_handshake_teardown_draw.dslb;
+rd = system ${dsl_cli(draw)} --lmcode build/examples/pcap/tcp_handshake_teardown_draw.dslb;
 assert(rd.code == 0);
 copy_file("build/rendered/tcp_handshake_teardown.png", "images/tcp_handshake_teardown.png");
 copy_file("build/rendered/tcp_handshake_teardown.png", "docs/images/pcap/tcp_handshake_teardown.png");

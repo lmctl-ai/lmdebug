@@ -69,7 +69,7 @@ c.save_fields_csv("dns.time && ip.src == 1.1.1.1", "dns.time,dns.qname", "build/
 c.save_pcapng("build/examples/pcap/dns_latency.pcapng");
 end _lmcode_
 savedsl(p, "build/examples/pcap/dns_latency.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/dns_latency.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/dns_latency.dslb;
 if (r.code != 0) {
   print(r.stdout + r.stderr);
 }
@@ -108,7 +108,7 @@ plot.cmd("unset multiplot");
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/dns_latency_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/dns_latency_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/dns_latency_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/dns_latency.png", "docs/images/pcap/dns_latency.png");
 print("wrote images/dns_latency.png");

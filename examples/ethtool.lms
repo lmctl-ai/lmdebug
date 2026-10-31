@@ -3,7 +3,7 @@
 #        EthtoolLink iface/speed_mbps/duplex/autoneg/port/link_detected/error,
 #        EthtoolDriver iface/driver/version/firmware_version/bus_info/n_stats/error,
 #        EthtoolStats iface/error/stats, EthtoolStat name/value, EthtoolStatList len/at
-# Run: lmscript examples/ethtool.lms   (then: lmdebug --dsl build/ethtool.dslb)
+# Run: lmscript examples/ethtool.lms   (then: lmdebug --lmcode build/ethtool.dslb)
 # Needs: nothing (offline); queries loopback "lo", where settings map to
 #        speed=-1/unknown and link=true, while driver/statistics surface
 #        unsupported ioctls via error() data.

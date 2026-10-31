@@ -202,7 +202,7 @@ def inventory(args):
             continue
         version = observed(program, '--version')
         versions[name] = version['stdout'].strip() if version['returncode'] == 0 else version
-        schema = observed(program, '--dsl-schema', '--json')
+        schema = observed(program, '--lmcode-schema', '--json')
         if schema['returncode'] == 0:
             try:
                 json.loads(schema['stdout'])
@@ -422,7 +422,7 @@ def main(argv=None):
                                      'url': args.url if args.mode == 'remote-https' else None,
                                      'exchange_mode': args.exchange_mode, 'expected_length': args.expected_length,
                                      'request_contents': 'omitted'}
-            child = [args.host_program, '--dsl', args.bytecode, str(checkpoint), hostname, selected, str(port), request,
+            child = [args.host_program, '--lmcode', args.bytecode, str(checkpoint), hostname, selected, str(port), request,
                      str(args.cap), str(args.expected_length), args.exchange_mode, str(args.greeting_length), trust,
                      str(args.mode.endswith('https')).lower()]
             cp = bounded_run(child, args.timeout)

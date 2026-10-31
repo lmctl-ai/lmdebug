@@ -45,7 +45,7 @@ assert_eq(cap.filter("ipv6.reassembled").packet_count(), 1);
 cap.save_packets_csv("build/examples/pcap/ip_fragment_reassembly.csv");
 end _lmcode_
 savedsl(p, "build/examples/pcap/ip_fragment_reassembly.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/ip_fragment_reassembly.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/ip_fragment_reassembly.dslb;
 assert(r.code == 0);
 
 # 2. Render IPv4 & IPv6 Fragment Reassembly Forensics Diagram in lmdraw
@@ -112,7 +112,7 @@ scene.text(667.0, 496.0, 11.0, "Filter match: ipv6.fragmented && ipv6.reassemble
 scene.render_png("build/rendered/ip_fragment_reassembly.png", 900, 560, 1);
 end _lmcode_
 savedsl(draw, "build/examples/pcap/ip_fragment_reassembly_draw.dslb");
-rd = system ${dsl_cli(draw)} --dsl build/examples/pcap/ip_fragment_reassembly_draw.dslb;
+rd = system ${dsl_cli(draw)} --lmcode build/examples/pcap/ip_fragment_reassembly_draw.dslb;
 assert(rd.code == 0);
 copy_file("build/rendered/ip_fragment_reassembly.png", "images/ip_fragment_reassembly.png");
 copy_file("build/rendered/ip_fragment_reassembly.png", "docs/images/pcap/ip_fragment_reassembly.png");

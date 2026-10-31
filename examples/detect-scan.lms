@@ -1,6 +1,6 @@
 # Chapter: Detection - YARA file and directory scanning with embedded builtin rules
 # Shows: detect.scan, DetectScanResult.scanned_files/matched_files/matches/skipped/error, Match.path/rule/namespace/severity/tags/matches
-# Run: lmscript examples/detect-scan.lms      (then: lmdebug --dsl build/detect-scan.dslb)
+# Run: lmscript examples/detect-scan.lms      (then: lmdebug --lmcode build/detect-scan.dslb)
 # Needs: nothing (offline); scans rules/builtin.yar against embedded builtin YARA rules.
 # exit: 0
 # expect:

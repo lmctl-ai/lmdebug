@@ -1,6 +1,6 @@
 # Chapter: Diagnostics - explicit-interface IPv4 ARP
 # Shows: net.arping result metadata, error handling, and empty probe list.
-# Run: lmscript examples/arping.lms      (then: lmdebug --dsl build/arping.dslb)
+# Run: lmscript examples/arping.lms      (then: lmdebug --lmcode build/arping.dslb)
 # Needs: nothing; loopback is intentionally rejected because self-ARP is not
 #        a reachability test.
 # exit: 0

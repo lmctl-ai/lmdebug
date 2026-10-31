@@ -70,7 +70,7 @@ c.save_fields_csv("tcp.srcport == 9001 && tcp.analysis.ack_rtt > 0", "frame.time
 c.save_fields_csv("tcp.analysis.retransmission", "frame.time", "build/examples/pcap/rtt_lte_rtx.csv");
 end _lmcode_
 savedsl(p, "build/examples/pcap/packet_loss_rtt_histogram.dslb");
-r = system ${dsl_cli(p)} --dsl build/examples/pcap/packet_loss_rtt_histogram.dslb;
+r = system ${dsl_cli(p)} --lmcode build/examples/pcap/packet_loss_rtt_histogram.dslb;
 if (r.code != 0) {
   print(r.stdout + r.stderr);
 }
@@ -107,7 +107,7 @@ plot.cmd("unset multiplot");
 plot.close();
 end _lmcode_
 savedsl(plt, "build/examples/pcap/packet_loss_rtt_histogram_plot.dslb");
-rp = system ${dsl_cli(plt)} --dsl build/examples/pcap/packet_loss_rtt_histogram_plot.dslb;
+rp = system ${dsl_cli(plt)} --lmcode build/examples/pcap/packet_loss_rtt_histogram_plot.dslb;
 assert(rp.code == 0);
 copy_file("images/packet_loss_rtt_histogram.png", "docs/images/pcap/packet_loss_rtt_histogram.png");
 print("wrote images/packet_loss_rtt_histogram.png");
