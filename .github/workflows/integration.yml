@@ -72,8 +72,6 @@ jobs:
           EXPECTED_PLATFORM: ${{ matrix.name }}
           LMDEBUG_TAG: ${{ inputs.lmdebug_tag }}
           EXAMPLES_REF: ${{ inputs.examples_ref }}
-          # Pktmon only supports removing all filters; this is a fresh hosted VM.
-          LMDEBUG_PKTMON_EXCLUSIVE: '1'
         run: |
           python scripts/integration-run.py --expected-platform "$EXPECTED_PLATFORM" --lmdebug-tag "$LMDEBUG_TAG" --examples-ref "$EXAMPLES_REF" \
             --mock-compiler "$MOCK_COMPILER" --sudo-capture --skip-unsupported-macos \

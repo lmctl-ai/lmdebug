@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "description": "Explicit released example expectations; SKIP is not native feature coverage.",
+  "examples_ref": "v0.1.36",
+  "examples": {
+    "examples/arping.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "arping", "reason": "Linux ARP/raw-network backend"}}},
+    "examples/correlation/https-packets-offline.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/counters.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/detect-autoruns.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "detect autoruns", "reason": "Linux autorun scanner"}}},
+    "examples/detect-hashes.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "detect hashes scan", "reason": "Linux detection/hash-store backend"}}},
+    "examples/detect-quarantine.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "detect quarantine", "reason": "Linux quarantine backend"}}},
+    "examples/detect-scan.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "detect scan", "reason": "Linux detection scanner"}}},
+    "examples/dns-lookup.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "dns", "reason": "Linux DNS backend"}}},
+    "examples/dns-query.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "dns", "reason": "Linux DNS backend; an error-as-data result is not a working query"}}},
+    "examples/ethtool.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "ethtool", "reason": "Linux ethtool/ioctl backend and lo interface"}}},
+    "examples/interfaces.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/link.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/mtr.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "mtr", "reason": "Linux raw-network backend"}}},
+    "examples/neigh.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "neigh", "reason": "Linux neighbour backend"}}},
+    "examples/pcap/dns_latency.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/flow_sankey.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/gallery/ip_fragment_reassembly.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/gallery/quic_vs_tls_handshake.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/gallery/tcp_seqwrap_and_ecn.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/gallery/vlan_segmentation.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/header_anatomy.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/io_traffic_sweep.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/live/interface_inventory.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "pcap live", "reason": "Windows live capture/interface enumeration explicitly unsupported; no Npcap"}}},
+    "examples/pcap/packet_loss_rtt_histogram.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/port_scan_detection.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/protocol_hierarchy.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/protocol_sequence_ladder.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/retransmission_storm.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/rtt_distribution.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/slow_start_cwnd.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/tcp_handshake_teardown.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/tcp_stevens_graph.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/tls_version_census.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pcap/top_talkers_topology.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/pipe.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/proc-list.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "proc", "reason": "Linux /proc enumeration and PID 1 assumption"}}},
+    "examples/proc-show.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "proc", "reason": "Linux /proc inspection and process mutation backend"}}},
+    "examples/routes.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/rule.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "rule", "reason": "Linux policy-routing backend"}}},
+    "examples/scan.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "scan", "reason": "Linux network scanner backend"}}},
+    "examples/segment/local-https-timing.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/segment/local-tcp-timing.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/sockets-summary.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/sockets.lms": {"platforms": ["linux-x64", "linux-arm64", "windows-x64"]},
+    "examples/sys-cpu.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "sys cpu", "reason": "Linux system CPU backend"}}},
+    "examples/sys-disk.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "sys disk", "reason": "Linux system disk backend"}}},
+    "examples/sys-mem.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "sys mem", "reason": "Linux system memory backend"}}},
+    "examples/sys-set.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "sys", "reason": "Linux sysctl mutation backend"}}},
+    "examples/sys-top.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "sys top", "reason": "Linux process/system top backend"}}},
+    "examples/trace.lms": {"platforms": ["linux-x64", "linux-arm64"], "unsupported": {"windows-x64": {"capability": "trace", "reason": "Linux raw-network traceroute backend"}}}
+  },
+  "helper_overlays": [
+    "examples/segment/timing.py",
+    "examples/correlation/correlate_https.py"
+  ],
+  "traffic": {
+    "linux-x64": {
+      "capture": true
+    },
+    "linux-arm64": {
+      "capture": true
+    },
+    "windows-x64": {
+      "capture": false,
+      "reason": "Released Windows host has no live capture/Npcap backend; pktmon on windows-2022 produced a header-only pcapng for localhost in run 41240976973. Real HTTP, iperf and network sampling still run; offline PCAP examples remain required."
+    }
+  },
+  "helper_patch": "integration/compatibility/v0.1.36-helpers.patch"
+}

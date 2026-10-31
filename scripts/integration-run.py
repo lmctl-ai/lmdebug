@@ -50,6 +50,39 @@ def export_examples(ref, stage):
     (stage/'build').mkdir(exist_ok=True)
     return commit
 
+def platform_plan(ref, stage, target):
+    """Require an exact, reviewed expected set; new examples cannot silently skip."""
+    manifest_path = ROOT/'scripts/integration-platforms.json'
+    data = manifest_path.read_bytes()
+    manifest = json.loads(data)
+    if ref != manifest['examples_ref']:
+        raise ValueError('examples ref has no reviewed platform manifest: '+ref)
+    actual = {p.relative_to(stage).as_posix() for p in (stage/'examples').rglob('*.lms')}
+    if actual != set(manifest['examples']):
+        raise ValueError('platform manifest/example set differs: '+repr(sorted(actual ^ set(manifest['examples']))))
+    return manifest, hashlib.sha256(data).hexdigest()
+
+def overlay_helpers(stage, manifest):
+    """Apply a reviewed versioned portability patch without importing protocol drift."""
+    names = manifest['helper_overlays']
+    if not names: return []
+    records = []
+    for name in names:
+        if not name.startswith('examples/') or not name.endswith('.py') or '..' in PurePosixPath(name).parts:
+            raise ValueError('invalid helper overlay: '+name)
+        records.append({'path':name,'original_sha256':hashlib.sha256((stage/name).read_bytes()).hexdigest()})
+    patch_path = ROOT/manifest['helper_patch']
+    patch_data = patch_path.read_bytes()
+    # Git is already required to export the tagged examples. The patch is public,
+    # versioned test content, not a patch inferred from mutable host output.
+    argv = ['git','apply','--unsafe-paths','--directory='+stage.resolve().as_posix()]
+    run([*argv,'--check',str(patch_path)],ROOT,os.environ)
+    run([*argv,str(patch_path)],ROOT,os.environ)
+    for record in records:
+        record['sha256']=hashlib.sha256((stage/record['path']).read_bytes()).hexdigest()
+        record['patch_sha256']=hashlib.sha256(patch_data).hexdigest()
+    return records
+
 def deferred_programs(text):
     """Legacy chapter scripts save one program without executing it themselves."""
     code = re.sub(r'"(?:\\.|[^"\\])*"|\'(?:\\.|[^\'\\])*\'|#[^\n]*', ' ', text)
@@ -125,6 +158,8 @@ def main():
         if report['compiler'] != 'lmscript 0.2.426' or report['mock_compiler'] != 'lmscript 0.2.448':
             raise ValueError('released v5/v6 fixtures require lmscript 0.2.426 and 0.2.448 respectively')
         stage=work/'examples'; report['examples_commit']=export_examples(args.examples_ref, stage)
+        manifest, report['platform_manifest_sha256'] = platform_plan(args.examples_ref, stage, target)
+        report['helper_overlays'] = overlay_helpers(stage, manifest)
         examples=sorted(p for p in (stage/'examples').rglob('*.lms') if not args.only or args.only in p.relative_to(stage).as_posix())
         if not examples: raise ValueError('no examples selected')
         report['selected_examples']=len(examples); report['development_filter']=args.only
@@ -142,6 +177,8 @@ def main():
         directory=work/'bin'; directory.mkdir(); binaries={}
         needed={'lmdebug','lmconn'}
         for example in examples:
+            if target not in manifest['examples'][example.relative_to(stage).as_posix()]['platforms']:
+                continue
             needed.update(re.findall(r'\bcli\s*=\s*"(\w+)', example.read_text(encoding='utf-8')))
         for name in sorted(needed, key=lambda n: (n!='lmdebug', n)):
             if name not in lock: raise ValueError('unregistered example host: '+name)
@@ -155,6 +192,15 @@ def main():
         report['tools']['lmmock']['version']=run([binaries['lmmock'],'--version'],ROOT,env).strip()
         for example in examples:
             record={'example':example.relative_to(stage).as_posix()}
+            policy = manifest['examples'][record['example']]
+            if target not in policy['platforms']:
+                skip = policy.get('unsupported',{}).get(target)
+                if not skip: raise ValueError('missing explicit platform reason: '+record['example'])
+                if any(c.get('name')==skip['capability'] and c.get('supported') for c in report['capabilities'].get('commands',[])):
+                    raise ValueError('stale manifest skips an advertised supported capability: '+skip['capability'])
+                record.update(status='SKIP', detail=skip['reason'], capability=skip['capability'])
+                report['examples'].append(record); print('SKIP',record['example'],record['detail'],flush=True)
+                continue
             try: record.update(execute_example(example,stage,compiler,binaries,env,args.timeout))
             except Exception as error: record.update(status='FAIL',detail=str(error)[-8000:])
             report['examples'].append(record); print(record['status'],record['example'],flush=True)
@@ -169,7 +215,7 @@ def main():
             result=subprocess.run(hosts.command(command[0],*command[1:]),env=env,cwd=ROOT,text=True,capture_output=True,timeout=180)
             report['traffic']=json.loads(traffic.read_text()) if traffic.is_file() else {'status':'FAIL','detail':result.stdout+result.stderr}
             if result.returncode and report['traffic']['status']=='PASS': raise RuntimeError('traffic process failed despite PASS report')
-        report['status']='PASS' if all(r['status']=='PASS' for r in report['examples']) and report['traffic']['status']=='PASS' else 'FAIL'
+        report['status']='PASS' if all(r['status'] in ('PASS','SKIP') for r in report['examples']) and any(r['status']=='PASS' for r in report['examples']) and report['traffic']['status']=='PASS' else 'FAIL'
         code=0 if report['status']=='PASS' else 1
     except hosts.Unavailable as error:
         unsupported = (args.skip_unsupported_macos and isinstance(error, hosts.MissingAsset)
@@ -188,6 +234,8 @@ def main():
         report_path.parent.mkdir(parents=True,exist_ok=True); report_path.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
         summary='### '+target+': '+report['status']+'\n\n'+str(counts)+'\n\n'+report.get('reason','')+'\n'
         summary += 'Traffic: '+report['traffic']['status']+' '+str(report['traffic'].get('error') or report['traffic'].get('reason') or report['traffic'].get('detail') or '')[-1000:]+'\n'
+        if report['traffic'].get('capture',{}).get('status')=='SKIP':
+            summary += 'Capture: SKIP '+report['traffic']['capture']['reason']+'\n'
         for failure in (r for r in report['examples'] if r['status']!='PASS'):
             summary += '- '+failure['example']+': '+failure.get('detail','')[-400:]+'\n'
         if args.summary:

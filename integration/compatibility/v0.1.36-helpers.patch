@@ -1,0 +1,141 @@
+diff --git a/examples/correlation/correlate_https.py b/examples/correlation/correlate_https.py
+index aafdbc5..11d9d14 100755
+--- a/examples/correlation/correlate_https.py
++++ b/examples/correlation/correlate_https.py
+@@ -71,6 +71,11 @@ def sha256_bytes(data: bytes) -> str:
+     return hashlib.sha256(data).hexdigest()
+ 
+ 
++def read_utf8_bytes(path: pathlib.Path) -> str:
++    """Read UTF-8 without platform newline translation for byte-level hashes."""
++    return path.read_bytes().decode("utf-8")
++
++
+ def validate_https_url(raw_url: str) -> dict[str, Any]:
+     """Validate target URL per design doc §2.1 step 1."""
+     if not raw_url or any( ch in raw_url for ch in ("\r", "\n", "\t", " ", "\x00") ):
+@@ -1734,7 +1739,9 @@ def run_offline_correlation(
+ ) -> int:
+     """Run offline replay correlation and emit all artifacts to out_dir."""
+     manifest = json.loads((fixture_dir / "request.json").read_text(encoding="utf-8"))
+-    trace_text = (fixture_dir / "tls-trace.txt").read_text(encoding="utf-8")
++    # Hash the exact bytes emitted by lmssl.  Windows text-mode writes may
++    # contain CRLF; read_bytes preserves that representation for verification.
++    trace_text = read_utf8_bytes(fixture_dir / "tls-trace.txt")
+     lmssl_info = json.loads(lmssl_verify_json.read_text(encoding="utf-8"))
+ 
+     # Verify trace SHA-256 matches what lmssl computed in its DSL block
+@@ -2446,8 +2453,8 @@ savedsl(p, "{client_dslb.as_posix()}");
+         },
+     }
+ 
+-    trace_text = trace_path.read_text(encoding="utf-8")
+-    hs_trace_text = hs_trace_path.read_text(encoding="utf-8") if hs_trace_path.is_file() else ""
++    trace_text = read_utf8_bytes(trace_path)
++    hs_trace_text = read_utf8_bytes(hs_trace_path) if hs_trace_path.is_file() else ""
+     rows = load_dissected_fields_csv(fields_csv_path)
+     corr = correlate_exchange(rows, trace_text, manifest, hs_trace_text)
+     write_correlation_artifacts(out_dir, manifest, trace_text, corr)
+diff --git a/examples/segment/timing.py b/examples/segment/timing.py
+index 98045fc..8836f60 100755
+--- a/examples/segment/timing.py
++++ b/examples/segment/timing.py
+@@ -38,8 +38,98 @@ SEGMENTS = {
+ }
+ 
+ 
++def _bounded_windows_run(argv, timeout=3.0):
++    """Run a child while draining Windows pipe handles with a hard byte cap."""
++    child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
++    streams = (child.stdout, child.stderr)
++    buffers = [bytearray(), bytearray()]
++    lock = threading.Lock()
++    finished = threading.Event()
++    failure = [None]
++    killed = [False]
++
++    def stop(reason):
++        with lock:
++            if failure[0] is None:
++                failure[0] = reason
++            if killed[0]:
++                return
++            killed[0] = True
++        try:
++            child.kill()
++        except ProcessLookupError:
++            pass
++
++    def reader(index, stream):
++        fd = stream.fileno()
++        try:
++            while not finished.is_set():
++                # os.read avoids BufferedReader's close lock when a descendant
++                # inherits the pipe after the direct child exits.
++                chunk = os.read(fd, 65536)
++                if not chunk:
++                    return
++                with lock:
++                    remaining = MAX_OUTPUT - sum(map(len, buffers))
++                    if remaining <= 0:
++                        overflow = True
++                    else:
++                        buffers[index].extend(chunk[:remaining])
++                        overflow = len(chunk) > remaining
++                if overflow:
++                    stop('output_limit')
++                    return
++        except (OSError, ValueError):
++            # Killing the child closes its handles; the main thread reports the
++            # timeout/limit reason that caused the close.
++            return
++
++    threads = [threading.Thread(target=reader, args=(i, stream), daemon=True) for i, stream in enumerate(streams)]
++    for thread in threads:
++        thread.start()
++    deadline = time.monotonic() + timeout
++    while child.poll() is None and failure[0] is None and time.monotonic() < deadline:
++        time.sleep(.01)
++    if child.poll() is None:
++        stop('timeout')
++    child.wait()
++    # Drain all bytes written before the child exited.  Do not set finished
++    # until readers observe EOF, otherwise normal output can be truncated.
++    for thread in threads:
++        thread.join(timeout=1.0)
++    if any(thread.is_alive() for thread in threads):
++        stop('timeout')
++        finished.set()
++        for stream in streams:
++            try:
++                os.close(stream.fileno())
++            except OSError:
++                pass
++        for thread in threads:
++            thread.join(timeout=.2)
++    else:
++        finished.set()
++    for stream in streams:
++        try:
++            stream.close()
++        except OSError:
++            pass
++    reason = failure[0]
++    stdout, stderr = (bytes(buffers[0]), bytes(buffers[1]))
++    if reason:
++        stderr = (stderr + ('\nsupervisor: ' + reason).encode())[-MAX_OUTPUT:]
++    return subprocess.CompletedProcess(
++        argv, 124 if reason == 'timeout' else 125 if reason else child.returncode,
++        stdout.decode('utf-8', errors='replace'), stderr.decode('utf-8', errors='replace'))
++
++
+ def bounded_run(argv, timeout=3.0):
+     """Bound combined output and lifetime, including DNS in a subprocess."""
++    # Windows cannot select() on anonymous pipe handles; reader threads drain
++    # both pipes while preserving the same output and timeout limits.
++    if os.name == 'nt':
++        return _bounded_windows_run(argv, timeout)
++
+     child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+     buffers = {child.stdout: bytearray(), child.stderr: bytearray()}
+     active = list(buffers)

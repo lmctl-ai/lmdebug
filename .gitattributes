@@ -1,1 +1,4 @@
 * text=auto eol=lf
+
+# Unified-diff blank context lines intentionally contain one space.
+integration/compatibility/*.patch whitespace=-blank-at-eol

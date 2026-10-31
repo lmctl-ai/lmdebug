@@ -39,6 +39,14 @@ class WindowsCapture:
         finally:
             if self.filtered: self.call('filter','remove'); self.filtered=False
 
+def capture_policy(target):
+    policy=json.loads((ROOT/'scripts/integration-platforms.json').read_text())['traffic'][target]
+    if not isinstance(policy.get('capture'),bool):
+        raise ValueError('missing capture expectation for '+target)
+    if not policy['capture'] and (target!='windows-x64' or not policy.get('reason')):
+        raise ValueError('only the documented unsupported Windows capture backend may skip')
+    return policy
+
 def run_iperf(binary, work):
     port = free_port(); server = subprocess.Popen([str(binary), "iperf3", "-s", "-B", "127.0.0.1", "-p", str(port)], cwd=work, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
@@ -55,6 +63,7 @@ def main():
     ap=argparse.ArgumentParser(); ap.add_argument("--lmdebug",type=Path,required=True); ap.add_argument("--lmmock",type=Path,required=True); ap.add_argument("--lmconn",type=Path,required=True); ap.add_argument("--compiler",type=Path,required=True,help="compiler for lmmock v6"); ap.add_argument("--lmdebug-compiler",type=Path,help="compiler for released lmdebug v5 (0.2.426)"); ap.add_argument("--report",type=Path,required=True); ap.add_argument("--work",type=Path,required=True); ap.add_argument("--tcpdump",type=Path,default=Path(shutil.which("tcpdump") or "")); ap.add_argument("--interface"); ap.add_argument("--sudo",action="store_true"); a=ap.parse_args()
     a.lmdebug=a.lmdebug.resolve(); a.lmmock=a.lmmock.resolve(); a.lmconn=a.lmconn.resolve(); a.compiler=a.compiler.resolve(); a.lmdebug_compiler=(a.lmdebug_compiler or a.compiler).resolve(); a.tcpdump=a.tcpdump.resolve(); a.work=a.work.resolve(); a.report=a.report.resolve()
     system=platform.system().lower()
+    policy=capture_policy(hosts.native_platform())
     if system == "darwin" and not a.tcpdump.is_file(): return blocked(a.report, "tcpdump is required for real loopback capture")
     a.work.mkdir(parents=True, exist_ok=False); ready=a.work/"ready.json"; pcap=a.work/"loopback.pcap"; analysis=a.work/"analysis.json"; bytecode=a.work/"analyze.dslb"; mockcode=a.work/"mock.dslb"; mock_schema=a.work/"lmmock-schema.json"
     schema_proc=subprocess.run([str(a.lmmock),"schema"],cwd=a.work,capture_output=True,check=True); mock_schema.write_bytes(schema_proc.stdout)
@@ -79,7 +88,9 @@ def main():
         if not ready.is_file(): raise RuntimeError("lmmock did not become ready")
         base=json.loads(ready.read_text())["url"]; env=dict(os.environ,LMMOCK_URL=base,LMCONN_BIN=str(a.lmconn)); port=int(base.rsplit(":",1)[1])
         capture_reason=None
-        if system == "windows":
+        if not policy["capture"]:
+            evidence["capture"]={"status":"SKIP","reason":policy["reason"]}
+        elif system == "windows":
             pktmon=shutil.which("pktmon")
             if not pktmon: capture_reason="pktmon is required on Windows for native loopback capture"
             else:
@@ -108,6 +119,12 @@ def main():
         sampling=json.loads(sample_out)
         if sampling.get('error') or sampling.get('samples_kept',0)<2 or not any(m.get('n',0)>0 and not m.get('error') for m in sampling.get('metrics',[])): raise RuntimeError('network sampling lacks valid observations: '+sample_out)
         evidence['sampling']=sampling
+        if not policy['capture']:
+            report(a.report,{'status':'PASS','platform':platform.system(),'backend':'supported-loopback-checks','url':base,'sentinel':'LMDEBUG_LOOPBACK_SENTINEL_V1',
+                            'checks_passed':['lmmock/lmconn HTTP sentinel','lmdebug iperf nonzero bytes','lmdebug valid network sampling'],
+                            **evidence})
+            print('PASS supported HTTP/iperf/sampling checks; SKIP packet capture: '+policy['reason'])
+            return 0
         if system == "windows" and windows and windows.started:
             windows.finish(pcap)
         elif capture and not native_capture:
@@ -126,7 +143,7 @@ def main():
         subprocess.run(hosts.command(a.lmdebug_compiler,source),cwd=a.work,check=True)
         analyzed=subprocess.run([str(a.lmdebug),"pcap","--dsl",str(bytecode)],cwd=a.work,capture_output=True,text=True,timeout=60)
         if analyzed.returncode: raise RuntimeError("lmdebug offline analysis failed: "+analyzed.stdout+analyzed.stderr)
-        report(a.report,{"status":"PASS","platform":platform.system(),"interface":iface,"capture_privilege":"sudo" if a.sudo and system!="windows" else "current token","backend":"lmdebug-live+offline" if native_capture else "pktmon+offline" if system=="windows" else "tcpdump+offline","url":base,"sentinel":"LMDEBUG_LOOPBACK_SENTINEL_V1","pcap_bytes":pcap.stat().st_size,"analysis":json.loads(analysis.read_text()),**evidence}); print("PASS real lmmock/lmconn HTTP + lmdebug iperf loopback traffic captured and analyzed by lmdebug"); return 0
+        report(a.report,{"status":"PASS","platform":platform.system(),"interface":iface,"capture_privilege":"sudo" if a.sudo and system!="windows" else "current token","backend":"lmdebug-live+offline" if native_capture else "pktmon+offline" if system=="windows" else "tcpdump+offline","url":base,"sentinel":"LMDEBUG_LOOPBACK_SENTINEL_V1","capture":{"status":"PASS"},"pcap_bytes":pcap.stat().st_size,"analysis":json.loads(analysis.read_text()),**evidence}); print("PASS real lmmock/lmconn HTTP + lmdebug iperf loopback traffic captured and analyzed by lmdebug"); return 0
     except Exception as exc: report(a.report,{"status":"FAIL","error":str(exc),"platform":platform.system(),**evidence}); print(str(exc),file=sys.stderr); return 1
     finally:
         if capture and capture.poll() is None:

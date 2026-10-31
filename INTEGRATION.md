@@ -6,8 +6,11 @@ No private implementation is built or copied into this public repository.
 
 The default is lmdebug **v0.1.36** with examples from its matching public git
 tag. Current main changed host option spellings after that release; selecting
-`examples_ref=main` intentionally exposes those release/content incompatibilities.
-The harness never rewrites host command flags to hide them.
+`examples_ref=main` requires a separately reviewed platform manifest and a matching
+released protocol; it cannot silently reuse the v0.1.36 expected set.
+The harness never rewrites host command flags. A versioned, checked Python-only
+compatibility patch fixes pipe supervision and raw-byte hashing for the released
+examples; reports record the patch and before/after helper hashes.
 
 Released hosts and exact auxiliary versions are in `scripts/integration-hosts.json`.
 Downloads require a GitHub release SHA-256 digest or matching SHA256SUMS entry;
@@ -19,7 +22,11 @@ both explicitly. Setup Python provides the `python3` alias used by examples on
 Windows; runner OpenSSL supplies ephemeral TLS test certificates. Version and
 asset hashes are recorded with the report.
 
-Every selected example must execute successfully. Historical chapter files that
+Every platform-supported example must execute successfully.
+`scripts/integration-platforms.json` lists all 50 examples and the exact native
+expected set: Linux runs 50; Windows runs 29 and explicitly skips 21 Linux-only
+examples. Unknown refs or added/unreviewed examples fail closed. Every skip has
+a capability and reason in the JSON report and workflow summary. Historical chapter files that
 only call savedsl are followed by actual released-host bytecode execution;
 files that execute their own programs retain their orchestration. Declared
 `#|` expected outputs must occur. The harness supplies a benign MIT test-marker
@@ -37,24 +44,43 @@ The additional traffic gate uses only loopback:
   in a reconstructed TCP stream. External backends are labeled as external
   capture plus analysis, not as native Windows live acquisition.
 
-POSIX capture uses passwordless sudo on hosted runners. Windows pktmon is
-restricted to an explicitly exclusive disposable runner and rejects existing
-filters. Microsoft's [filter command](https://learn.microsoft.com/en-us/windows-server/administration/windows-commands/pktmon-filter)
-only removes all filters, so this harness does not run that cleanup on an
-unacknowledged workstation. The hosted workflow supplies the acknowledgement.
-Capture startup, cleanup, format/linktype and packet assertions must succeed;
-an unavailable backend is BLOCKED/failed, never a synthetic green result.
+POSIX capture uses passwordless sudo on hosted runners. Windows requires the
+real HTTP sentinel roundtrips, nonzero iperf bytes, valid sampling results, and
+all supported offline-PCAP examples. Native live capture is unsupported in the
+released Windows host (no Npcap). In run 41240976973, pktmon captured only a
+188-byte pcapng header for localhost despite successful real HTTP/iperf traffic.
+Its capture-only check is now an explicit manifest SKIP, never described as a
+successful packet capture; Linux capture and sentinel reassembly remain required.
+The traffic report separates that skip from the supported checks that passed.
+Sampling asserts valid metric observations; it does not claim Windows aggregate
+adapter counters include loopback bytes (they were zero in the diagnostic run).
+
+Windows failure classification from run 41240976973:
+
+| Examples | Classification and action |
+| --- | --- |
+| detect-autoruns/quarantine/scan, detect-hashes | Linux detection backend; explicit SKIP |
+| dns-lookup/query, ethtool, neigh, rule, scan, arping/mtr/trace | Linux network backend; explicit SKIP |
+| proc-list/show, sys-cpu/disk/mem/set/top | Linux proc/sys backend; explicit SKIP |
+| pcap/live/interface_inventory | Windows live interface enumeration unsupported; explicit SKIP |
+| correlation/https-packets-offline | Supported; helper now hashes raw UTF-8 bytes without CRLF translation |
+| segment/local-https-timing, segment/local-tcp-timing | Supported; bounded Windows pipe readers replace POSIX select/killpg |
+| Real loopback traffic capture | Unsupported native backend and header-only pktmon evidence; capture-only SKIP |
+
+Passing an error-as-data branch does not establish a backend is supported:
+Linux-only examples that happened to return zero on Windows also explicitly skip.
+The observed failures did not identify a defect in an advertised Windows backend;
+product functionality is unchanged. Windows helper fixes still need native CI.
 
 Known limits (2026-10-31): v0.1.36 publishes no macOS lmdebug assets, so both
 macOS legs explicitly report SKIP (zero examples passed), with the missing asset
 and Apple-port reason in their JSON reports and job summaries. The workflow
 passes `--skip-unsupported-macos`; standalone runs still fail closed by default.
 Only an absent primary macOS asset may skip: failed downloads, checksum proofs,
-auxiliary assets and execution errors remain failures. Once a native asset exists,
-the same workflow automatically runs the complete gate. The private source also
+auxiliary assets and execution errors remain failures. Once native assets exist,
+the Apple expected set must be reviewed before native coverage can be claimed. The private source also
 needs an Apple CMake/backend/dependency port before native Mac build/package/
-smoke can be claimed. Native Windows execution and pktmon loopback visibility
-need the owner-dispatched run. The report includes actual `lmdebug caps` and per-example output; successful
+smoke can be claimed. The updated supported Windows subset needs an owner-dispatched native rerun. The report includes actual `lmdebug caps` and per-example output; successful
 error-as-data examples do not establish native support for unsupported domains.
 Python supervisor portability failures or release/content drift remain failures.
 Linux x64 locally passed all 50 released examples and the real traffic gate.

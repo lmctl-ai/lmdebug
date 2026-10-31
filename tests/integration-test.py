@@ -16,6 +16,9 @@ ROOT=Path(__file__).resolve().parents[1]
 def load(name,path):
     spec=importlib.util.spec_from_file_location(name,ROOT/path); module=importlib.util.module_from_spec(spec); spec.loader.exec_module(module); return module
 hosts=load('hosts','scripts/released-hosts.py'); integration=load('integration','scripts/integration-run.py'); traffic=load('traffic','scripts/traffic-check.py')
+def fixture_plan(ref, stage, target):
+    return {'examples':{p.relative_to(stage).as_posix():{'platforms':[target]} for p in (stage/'examples').rglob('*.lms')},
+            'helper_overlays':[]}, 'fixture-sha'
 class IntegrationContracts(unittest.TestCase):
     def test_all_five_native_assets_and_missing_mac_fail_closed(self):
         for target in ('linux-x64','linux-arm64','macos-x64','macos-arm64','windows-x64'):
@@ -34,6 +37,34 @@ class IntegrationContracts(unittest.TestCase):
         for variable in ('a.compiler','a.lmdebug_compiler'):
             self.assertIn('hosts.command('+variable,text)
             self.assertNotIn('[str('+variable+')',text)
+    def test_platform_manifest_exact_set_and_documented_windows_skips(self):
+        with tempfile.TemporaryDirectory() as directory:
+            stage=Path(directory)/'stage'
+            integration.export_examples('v0.1.36',stage)
+            manifest,digest=integration.platform_plan('v0.1.36',stage,'windows-x64')
+            self.assertEqual(len(digest),64)
+            self.assertEqual(len(manifest['examples']),50)
+            supported=[n for n,e in manifest['examples'].items() if 'windows-x64' in e['platforms']]
+            self.assertEqual(len(supported),29)
+            for n,e in manifest['examples'].items():
+                if n not in supported:
+                    self.assertTrue(e['unsupported']['windows-x64']['reason'])
+            records=integration.overlay_helpers(stage,manifest)
+            self.assertEqual(len(records),2)
+            for record in records:
+                self.assertEqual(record['sha256'],hashlib.sha256((stage/record['path']).read_bytes()).hexdigest())
+                self.assertNotIn('"--lmcode"',(stage/record['path']).read_text())
+                self.assertNotIn("'--lmcode'",(stage/record['path']).read_text())
+            (stage/'examples/unreviewed.lms').write_text('fixture')
+            with self.assertRaisesRegex(ValueError,'manifest/example set differs'):
+                integration.platform_plan('v0.1.36',stage,'windows-x64')
+            with self.assertRaisesRegex(ValueError,'no reviewed platform manifest'):
+                integration.platform_plan('main',stage,'windows-x64')
+    def test_capture_expectations_do_not_silently_skip_linux(self):
+        for target in ('linux-x64','linux-arm64'):
+            self.assertTrue(traffic.capture_policy(target)['capture'])
+        policy=traffic.capture_policy('windows-x64')
+        self.assertFalse(policy['capture']); self.assertIn('header-only',policy['reason'])
     def test_checksum_rejection_before_install(self):
         hosts.verify(b'release',hashlib.sha256(b'release').hexdigest())
         with self.assertRaises(ValueError): hosts.verify(b'tamper',hashlib.sha256(b'release').hexdigest())
@@ -89,6 +120,7 @@ class IntegrationContracts(unittest.TestCase):
                       '--work',str(root/'work'),'--report',str(root/'report.json')]
                 if enabled: argv.append('--skip-unsupported-macos')
                 with patch('sys.argv',argv), patch.object(integration,'export_examples',side_effect=export), \
+                 patch.object(integration,'platform_plan',side_effect=fixture_plan), \
                      patch.object(integration,'run',side_effect=['lmscript 0.2.426','lmscript 0.2.448']), \
                      patch.object(integration.hosts,'native_platform',return_value=target), \
                      patch.object(integration.hosts,'install',side_effect=error), contextlib.redirect_stdout(io.StringIO()):
@@ -128,6 +160,7 @@ class IntegrationContracts(unittest.TestCase):
             argv=['integration-run.py','--compiler',str(compiler),'--mock-compiler',str(compiler),
                   '--work',str(root/'work'),'--report',str(root/'report.json')]
             with patch('sys.argv',argv), patch.object(integration,'export_examples',side_effect=export), \
+                 patch.object(integration,'platform_plan',side_effect=fixture_plan), \
                  patch.object(integration,'run',side_effect=['lmscript 0.2.426','lmscript 0.2.448']), \
                  patch.object(integration.hosts,'native_platform',return_value='macos-arm64'), \
                  patch.object(integration.hosts,'install',side_effect=integration.hosts.Unavailable('missing macOS asset')):
