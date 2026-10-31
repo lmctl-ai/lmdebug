@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: MIT
+p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@v0.1.36";
+let c = shark.open(ARGV[0]);
+assert_eq(c.packet_count() > 0, true);
+assert_eq(c.total_bytes() > 0, true);
+let found = false;
+for (i in range(0, c.tcp_stream_count())) { if (str_find(c.tcp_stream_text(i, "client"), "LMDEBUG_LOOPBACK_SENTINEL_V1") >= 0) { found = true; } }
+assert_eq(found, true);
+c.save_json(ARGV[1]);
+print(c.summary());
+end _lmcode_
+savedsl(p, ARGV[2]);
