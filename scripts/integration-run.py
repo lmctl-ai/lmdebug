@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: MIT
 """Released-binary integration: execute examples and deterministic loopback tests.
 
-Missing assets/unsupported prerequisites are BLOCKED and fail the job. No skipped
+Missing assets/unsupported prerequisites are BLOCKED and fail the job, except an
+explicitly requested unsupported-macOS skip when the primary native asset is absent. No skipped
 or compile-only example is counted as a successful end-to-end run.
 """
 import argparse
@@ -68,6 +69,7 @@ def deferred_programs(text):
     return programs
 
 def execute_example(example, stage, compiler, binaries, env, timeout):
+    stage = stage.resolve(strict=True)
     text = example.read_text(encoding='utf-8')
     started = time.monotonic()
     output = run([compiler, example], stage, env, timeout)
@@ -105,6 +107,8 @@ def main():
     parser.add_argument('--timeout', type=int, default=300)
     parser.add_argument('--only', help='development-only example substring filter')
     parser.add_argument('--sudo-capture', action='store_true')
+    parser.add_argument('--skip-unsupported-macos', action='store_true',
+                        help='report SKIP only if the release has no native macOS lmdebug asset')
     parser.add_argument('--skip-traffic', action='store_true', help='development only; reports BLOCKED, never a green complete run')
     args=parser.parse_args()
     target=hosts.native_platform(); work=args.work.resolve(); report_path=args.report.resolve()
@@ -168,13 +172,18 @@ def main():
         report['status']='PASS' if all(r['status']=='PASS' for r in report['examples']) and report['traffic']['status']=='PASS' else 'FAIL'
         code=0 if report['status']=='PASS' else 1
     except hosts.Unavailable as error:
-        report.update(status='BLOCKED',reason=str(error)); code=2
+        unsupported = (args.skip_unsupported_macos and isinstance(error, hosts.MissingAsset)
+                       and error.product == 'lmdebug' and error.target == target and target.startswith('macos-'))
+        status = 'SKIP' if unsupported else 'BLOCKED'
+        reason = str(error) + ('; unsupported until the Apple port publishes native assets' if unsupported else '')
+        report.update(status=status, reason=reason); code=0 if unsupported else 2
+        if unsupported: report['traffic']={'status':'SKIP','reason':reason}
         if not report['examples'] and 'examples' in locals():
-            report['examples']=[{'example':p.relative_to(stage).as_posix(),'status':'BLOCKED','detail':str(error)} for p in examples]
+            report['examples']=[{'example':p.relative_to(stage).as_posix(),'status':status,'detail':reason} for p in examples]
     except Exception as error:
         report.update(status='FAIL',reason=str(error)); code=1
     finally:
-        counts={s:sum(r['status']==s for r in report['examples']) for s in ('PASS','FAIL','BLOCKED')}
+        counts={s:sum(r['status']==s for r in report['examples']) for s in ('PASS','FAIL','BLOCKED','SKIP')}
         report['counts']=counts
         report_path.parent.mkdir(parents=True,exist_ok=True); report_path.write_text(json.dumps(report,indent=2)+'\n',encoding='utf-8')
         summary='### '+target+': '+report['status']+'\n\n'+str(counts)+'\n\n'+report.get('reason','')+'\n'

@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 """Real lmmock/lmconn loopback HTTP traffic captured and analyzed by lmdebug."""
-import argparse, json, os, platform, re, shutil, signal, socket, subprocess, sys, tempfile, time, threading
+import argparse, importlib.util, json, os, platform, re, shutil, signal, socket, subprocess, sys, tempfile, time, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
+loader = importlib.util.spec_from_file_location('traffic_hosts', ROOT/'scripts/released-hosts.py')
+hosts = importlib.util.module_from_spec(loader); loader.loader.exec_module(hosts)
 def free_port():
     sock=socket.socket(); sock.bind(("127.0.0.1",0)); port=sock.getsockname()[1]; sock.close(); return port
 def report(path, value): path.parent.mkdir(parents=True, exist_ok=True); path.write_text(json.dumps(value, indent=2)+"\n", encoding="utf-8")
@@ -57,7 +59,7 @@ def main():
     a.work.mkdir(parents=True, exist_ok=False); ready=a.work/"ready.json"; pcap=a.work/"loopback.pcap"; analysis=a.work/"analysis.json"; bytecode=a.work/"analyze.dslb"; mockcode=a.work/"mock.dslb"; mock_schema=a.work/"lmmock-schema.json"
     schema_proc=subprocess.run([str(a.lmmock),"schema"],cwd=a.work,capture_output=True,check=True); mock_schema.write_bytes(schema_proc.stdout)
     mock_source=a.work/"traffic-mock.lms"; mock_source.write_text((ROOT/"integration/traffic-mock.lms").read_text(),encoding="utf-8")
-    subprocess.run([str(a.compiler),str(mock_source),str(mockcode)],cwd=a.work,check=True)
+    subprocess.run(hosts.command(a.compiler,mock_source,mockcode),cwd=a.work,check=True)
     debug_schema=a.work/"lmdebug-schema.json"; debug_schema.write_bytes(subprocess.check_output([str(a.lmdebug),"pcap","--dsl-schema","--json"]))
     iface=a.interface or ("lo0" if system == "darwin" else None if system == "windows" else "lo")
     class Upstream(BaseHTTPRequestHandler):
@@ -89,7 +91,7 @@ def main():
             capture_source=a.work/"capture.lms"; capture_code=a.work/"capture.dslb"
             q=lambda value:json.dumps(str(value),ensure_ascii=False)
             capture_source.write_text('p=_lmcode_ schema='+q(debug_schema)+';\nlet c=shark.live('+q(iface)+',10000,3.0,65535,false,true,'+q('tcp and host 127.0.0.1 and port '+str(port))+');c.save_pcap('+q(pcap)+');\nend _lmcode_\nsavedsl(p,'+q(capture_code)+');\n',encoding='utf-8')
-            subprocess.run([str(a.lmdebug_compiler),str(capture_source)],cwd=a.work,check=True)
+            subprocess.run(hosts.command(a.lmdebug_compiler,capture_source),cwd=a.work,check=True)
             cmd=[str(a.lmdebug),'pcap','--dsl',str(capture_code)]
             if a.sudo: cmd=['sudo','-E',*cmd]
             capture=subprocess.Popen(cmd,cwd=a.work,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True)
@@ -121,7 +123,7 @@ def main():
             detail=capture.stderr.read()[-4000:] if capture and capture.poll() is not None else ""
             raise RuntimeError("packet capture produced no pcap: "+detail)
         source=a.work/"traffic-analyze.lms"; source.write_text((ROOT/"integration/traffic-analyze.lms").read_text().replace('p = _lmcode_ cli="lmdebug pcap" install="github:lmctl-ai/lmdebug@v0.1.36";', 'p = _lmcode_ schema='+json.dumps(str(debug_schema),ensure_ascii=False)+';').replace("ARGV[0]",json.dumps(str(pcap),ensure_ascii=False)).replace("ARGV[1]",json.dumps(str(analysis),ensure_ascii=False)).replace("ARGV[2]",json.dumps(str(bytecode),ensure_ascii=False)),encoding="utf-8")
-        subprocess.run([str(a.lmdebug_compiler),str(source)],cwd=a.work,check=True)
+        subprocess.run(hosts.command(a.lmdebug_compiler,source),cwd=a.work,check=True)
         analyzed=subprocess.run([str(a.lmdebug),"pcap","--dsl",str(bytecode)],cwd=a.work,capture_output=True,text=True,timeout=60)
         if analyzed.returncode: raise RuntimeError("lmdebug offline analysis failed: "+analyzed.stdout+analyzed.stderr)
         report(a.report,{"status":"PASS","platform":platform.system(),"interface":iface,"capture_privilege":"sudo" if a.sudo and system!="windows" else "current token","backend":"lmdebug-live+offline" if native_capture else "pktmon+offline" if system=="windows" else "tcpdump+offline","url":base,"sentinel":"LMDEBUG_LOOPBACK_SENTINEL_V1","pcap_bytes":pcap.stat().st_size,"analysis":json.loads(analysis.read_text()),**evidence}); print("PASS real lmmock/lmconn HTTP + lmdebug iperf loopback traffic captured and analyzed by lmdebug"); return 0

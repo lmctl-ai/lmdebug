@@ -24,6 +24,16 @@ class IntegrationContracts(unittest.TestCase):
             self.assertEqual(hosts.select_asset(metadata,'lmdebug',target),metadata['assets'][0])
         with self.assertRaisesRegex(hosts.Unavailable,'macos-arm64'):
             hosts.select_asset({'tag_name':'v0.1.36','assets':[]},'lmdebug','macos-arm64')
+    def test_windows_npm_compiler_uses_command_wrapper(self):
+        with patch.object(hosts.os,'name','nt'):
+            # Patch Path too: a Linux test must not instantiate a WindowsPath.
+            with patch.object(hosts,'Path',return_value=type('Suffix',(),{'suffix':'.cmd'})()):
+                self.assertEqual(hosts.command('C:/Program Files/lmscript.cmd','case.lms'),
+                                 ['cmd.exe','/d','/c','C:/Program Files/lmscript.cmd','case.lms'])
+        text=(ROOT/'scripts/traffic-check.py').read_text()
+        for variable in ('a.compiler','a.lmdebug_compiler'):
+            self.assertIn('hosts.command('+variable,text)
+            self.assertNotIn('[str('+variable+')',text)
     def test_checksum_rejection_before_install(self):
         hosts.verify(b'release',hashlib.sha256(b'release').hexdigest())
         with self.assertRaises(ValueError): hosts.verify(b'tamper',hashlib.sha256(b'release').hexdigest())
@@ -44,6 +54,49 @@ class IntegrationContracts(unittest.TestCase):
                 result=integration.execute_example(example,stage,'compiler',{'lmdebug':'released-lmdebug'},{},10)
             self.assertEqual(result['deferred_programs_executed'],['build/case.dslb'])
             self.assertEqual(calls[1][0:2],['released-lmdebug','--dsl'])
+    def test_workspace_alias_is_normalized_but_escape_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory).resolve(); stage=root/'stage'; stage.mkdir()
+            # A lexical alias exercises the same asymmetry as macOS /var -> /private/var
+            # and Windows temporary-directory junctions, without requiring symlink privileges.
+            (stage/'nested').mkdir(); alias=stage/'nested/..'
+            (stage/'case.dslb').write_bytes(b'fixture')
+            example=stage/'case.lms'
+            example.write_text('p=_dsl_ cli="lmdebug"; end _dsl_ savedsl(p,"case.dslb");')
+            with patch.object(integration,'run',return_value=''):
+                self.assertEqual(integration.execute_example(example,alias,'compiler',{'lmdebug':'host'},{},10)['status'],'PASS')
+                (root/'outside.dslb').write_bytes(b'fixture')
+                example.write_text('p=_dsl_ cli="lmdebug"; end _dsl_ savedsl(p,"../outside.dslb");')
+                with self.assertRaisesRegex(ValueError,'escapes'):
+                    integration.execute_example(example,alias,'compiler',{'lmdebug':'host'},{},10)
+    def test_only_absent_primary_macos_asset_can_skip(self):
+        cases=[('macos-arm64','lmdebug',True,'SKIP',0),
+               ('macos-x64','lmdebug',True,'SKIP',0),
+               ('macos-arm64','lmdebug',False,'BLOCKED',2),
+               ('windows-x64','lmdebug',True,'BLOCKED',2),
+               ('macos-arm64','lmconn',True,'BLOCKED',2),
+               ('macos-arm64',None,True,'BLOCKED',2)]
+        for target,product,enabled,status,code in cases:
+            with self.subTest(target=target,product=product,enabled=enabled), tempfile.TemporaryDirectory() as directory:
+                root=Path(directory); compiler=root/'compiler'; compiler.write_text('fixture')
+                def export(ref,stage):
+                    (stage/'examples').mkdir(parents=True)
+                    (stage/'examples/a.lms').write_text('fixture')
+                    return 'fixture-commit'
+                error=(integration.hosts.MissingAsset({'tag_name':'v0.1.36'},product,target,'absent')
+                       if product else integration.hosts.Unavailable('checksum absent'))
+                argv=['integration-run.py','--compiler',str(compiler),'--mock-compiler',str(compiler),
+                      '--work',str(root/'work'),'--report',str(root/'report.json')]
+                if enabled: argv.append('--skip-unsupported-macos')
+                with patch('sys.argv',argv), patch.object(integration,'export_examples',side_effect=export), \
+                     patch.object(integration,'run',side_effect=['lmscript 0.2.426','lmscript 0.2.448']), \
+                     patch.object(integration.hosts,'native_platform',return_value=target), \
+                     patch.object(integration.hosts,'install',side_effect=error), contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(integration.main(),code)
+                report=json.loads((root/'report.json').read_text())
+                self.assertEqual(report['status'],status)
+                self.assertEqual(report['counts']['PASS'],0)
+                self.assertEqual(report['counts'][status],1)
     def test_host_failure_and_missing_expected_output_cannot_pass(self):
         with tempfile.TemporaryDirectory() as directory:
             stage=Path(directory); example=stage/'case.lms'; example.write_text('r=system ["host"];\n#|required observation\n')
@@ -82,7 +135,7 @@ class IntegrationContracts(unittest.TestCase):
                     self.assertEqual(integration.main(),2)
             report=json.loads((root/'report.json').read_text())
             self.assertEqual(report['status'],'BLOCKED')
-            self.assertEqual(report['counts'],{'PASS':0,'FAIL':0,'BLOCKED':2})
+            self.assertEqual(report['counts'],{'PASS':0,'FAIL':0,'BLOCKED':2,'SKIP':0})
     def test_wrong_native_architecture_fails_before_installation(self):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)

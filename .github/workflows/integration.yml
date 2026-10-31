@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       lmdebug_tag:
-        description: Exact released lmdebug tag (missing native assets fail closed)
+        description: Exact released lmdebug tag (absent macOS assets explicitly skip)
         required: true
         default: v0.1.36
         type: string
@@ -76,7 +76,7 @@ jobs:
           LMDEBUG_PKTMON_EXCLUSIVE: '1'
         run: |
           python scripts/integration-run.py --expected-platform "$EXPECTED_PLATFORM" --lmdebug-tag "$LMDEBUG_TAG" --examples-ref "$EXAMPLES_REF" \
-            --mock-compiler "$MOCK_COMPILER" --sudo-capture \
+            --mock-compiler "$MOCK_COMPILER" --sudo-capture --skip-unsupported-macos \
             --report out/integration-report.json --summary "$GITHUB_STEP_SUMMARY"
       - name: Reports and generated witnesses
         if: always()

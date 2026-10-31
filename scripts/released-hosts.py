@@ -15,6 +15,12 @@ import urllib.request
 class Unavailable(RuntimeError):
     pass
 
+class MissingAsset(Unavailable):
+    def __init__(self, metadata, name, target, asset_name):
+        self.product = name
+        self.target = target
+        super().__init__(metadata.get("tag_name", "")+" has no native "+asset_name+" release asset")
+
 def native_platform():
     system = {'Linux': 'linux', 'Darwin': 'macos', 'Windows': 'windows'}[platform.system()]
     machine = platform.machine().lower()
@@ -41,8 +47,10 @@ def select_asset(metadata, name, target):
     if name == 'lmconn':
         asset_name = name+'-'+target.replace('macos-', 'darwin-')+'.tar.gz'
     matches = [a for a in metadata['assets'] if a['name'] == asset_name]
+    if not matches:
+        raise MissingAsset(metadata, name, target, asset_name)
     if len(matches) != 1:
-        raise Unavailable(metadata.get('tag_name', '')+' has no native '+asset_name+' release asset')
+        raise Unavailable('ambiguous release asset: '+asset_name)
     return matches[0]
 
 def expected_digest(metadata, asset):

@@ -46,7 +46,12 @@ Capture startup, cleanup, format/linktype and packet assertions must succeed;
 an unavailable backend is BLOCKED/failed, never a synthetic green result.
 
 Known limits (2026-10-31): v0.1.36 publishes no macOS lmdebug assets, so both
-macOS legs currently report BLOCKED and exit nonzero. The private source also
+macOS legs explicitly report SKIP (zero examples passed), with the missing asset
+and Apple-port reason in their JSON reports and job summaries. The workflow
+passes `--skip-unsupported-macos`; standalone runs still fail closed by default.
+Only an absent primary macOS asset may skip: failed downloads, checksum proofs,
+auxiliary assets and execution errors remain failures. Once a native asset exists,
+the same workflow automatically runs the complete gate. The private source also
 needs an Apple CMake/backend/dependency port before native Mac build/package/
 smoke can be claimed. Native Windows execution and pktmon loopback visibility
 need the owner-dispatched run. The report includes actual `lmdebug caps` and per-example output; successful
