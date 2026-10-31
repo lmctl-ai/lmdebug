@@ -38,8 +38,98 @@ SEGMENTS = {
 }
 
 
+def _bounded_windows_run(argv, timeout=3.0):
+    """Run a child while draining Windows pipe handles with a hard byte cap."""
+    child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    streams = (child.stdout, child.stderr)
+    buffers = [bytearray(), bytearray()]
+    lock = threading.Lock()
+    finished = threading.Event()
+    failure = [None]
+    killed = [False]
+
+    def stop(reason):
+        with lock:
+            if failure[0] is None:
+                failure[0] = reason
+            if killed[0]:
+                return
+            killed[0] = True
+        try:
+            child.kill()
+        except ProcessLookupError:
+            pass
+
+    def reader(index, stream):
+        fd = stream.fileno()
+        try:
+            while not finished.is_set():
+                # os.read avoids BufferedReader's close lock when a descendant
+                # inherits the pipe after the direct child exits.
+                chunk = os.read(fd, 65536)
+                if not chunk:
+                    return
+                with lock:
+                    remaining = MAX_OUTPUT - sum(map(len, buffers))
+                    if remaining <= 0:
+                        overflow = True
+                    else:
+                        buffers[index].extend(chunk[:remaining])
+                        overflow = len(chunk) > remaining
+                if overflow:
+                    stop('output_limit')
+                    return
+        except (OSError, ValueError):
+            # Killing the child closes its handles; the main thread reports the
+            # timeout/limit reason that caused the close.
+            return
+
+    threads = [threading.Thread(target=reader, args=(i, stream), daemon=True) for i, stream in enumerate(streams)]
+    for thread in threads:
+        thread.start()
+    deadline = time.monotonic() + timeout
+    while child.poll() is None and failure[0] is None and time.monotonic() < deadline:
+        time.sleep(.01)
+    if child.poll() is None:
+        stop('timeout')
+    child.wait()
+    # Drain all bytes written before the child exited.  Do not set finished
+    # until readers observe EOF, otherwise normal output can be truncated.
+    for thread in threads:
+        thread.join(timeout=1.0)
+    if any(thread.is_alive() for thread in threads):
+        stop('timeout')
+        finished.set()
+        for stream in streams:
+            try:
+                os.close(stream.fileno())
+            except OSError:
+                pass
+        for thread in threads:
+            thread.join(timeout=.2)
+    else:
+        finished.set()
+    for stream in streams:
+        try:
+            stream.close()
+        except OSError:
+            pass
+    reason = failure[0]
+    stdout, stderr = (bytes(buffers[0]), bytes(buffers[1]))
+    if reason:
+        stderr = (stderr + ('\nsupervisor: ' + reason).encode())[-MAX_OUTPUT:]
+    return subprocess.CompletedProcess(
+        argv, 124 if reason == 'timeout' else 125 if reason else child.returncode,
+        stdout.decode('utf-8', errors='replace'), stderr.decode('utf-8', errors='replace'))
+
+
 def bounded_run(argv, timeout=3.0):
     """Bound combined output and lifetime, including DNS in a subprocess."""
+    # Windows cannot select() on anonymous pipe handles; reader threads drain
+    # both pipes while preserving the same output and timeout limits.
+    if os.name == 'nt':
+        return _bounded_windows_run(argv, timeout)
+
     child = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
     buffers = {child.stdout: bytearray(), child.stderr: bytearray()}
     active = list(buffers)

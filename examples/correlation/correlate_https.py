@@ -71,6 +71,11 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def read_utf8_bytes(path: pathlib.Path) -> str:
+    """Read UTF-8 without platform newline translation for byte-level hashes."""
+    return path.read_bytes().decode("utf-8")
+
+
 def validate_https_url(raw_url: str) -> dict[str, Any]:
     """Validate target URL per design doc §2.1 step 1."""
     if not raw_url or any( ch in raw_url for ch in ("\r", "\n", "\t", " ", "\x00") ):
@@ -1734,7 +1739,9 @@ def run_offline_correlation(
 ) -> int:
     """Run offline replay correlation and emit all artifacts to out_dir."""
     manifest = json.loads((fixture_dir / "request.json").read_text(encoding="utf-8"))
-    trace_text = (fixture_dir / "tls-trace.txt").read_text(encoding="utf-8")
+    # Hash the exact bytes emitted by lmssl.  Windows text-mode writes may
+    # contain CRLF; read_bytes preserves that representation for verification.
+    trace_text = read_utf8_bytes(fixture_dir / "tls-trace.txt")
     lmssl_info = json.loads(lmssl_verify_json.read_text(encoding="utf-8"))
 
     # Verify trace SHA-256 matches what lmssl computed in its DSL block
@@ -2446,8 +2453,8 @@ savedsl(p, "{client_dslb.as_posix()}");
         },
     }
 
-    trace_text = trace_path.read_text(encoding="utf-8")
-    hs_trace_text = hs_trace_path.read_text(encoding="utf-8") if hs_trace_path.is_file() else ""
+    trace_text = read_utf8_bytes(trace_path)
+    hs_trace_text = read_utf8_bytes(hs_trace_path) if hs_trace_path.is_file() else ""
     rows = load_dissected_fields_csv(fields_csv_path)
     corr = correlate_exchange(rows, trace_text, manifest, hs_trace_text)
     write_correlation_artifacts(out_dir, manifest, trace_text, corr)
