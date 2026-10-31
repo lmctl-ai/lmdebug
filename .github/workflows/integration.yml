@@ -26,11 +26,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - {name: linux-x64, os: ubuntu-24.04}
-          - {name: linux-arm64, os: ubuntu-24.04-arm}
-          - {name: macos-x64, os: macos-15-intel}
-          - {name: macos-arm64, os: macos-15}
-          - {name: windows-x64, os: windows-2022}
+          - {name: linux-x64, os: ubuntu-24.04, arch: x64}
+          - {name: linux-arm64, os: ubuntu-24.04-arm, arch: arm64}
+          - {name: macos-x64, os: macos-15-intel, arch: x64}
+          - {name: macos-arm64, os: macos-15, arch: arm64}
+          - {name: windows-x64, os: windows-2022, arch: x64}
     defaults:
       run:
         shell: bash
@@ -40,9 +40,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with: {node-version: 24}
+        with: {node-version: 24, architecture: '${{ matrix.arch }}'}
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
-        with: {python-version: '3.12'}
+        with: {python-version: '3.12', architecture: '${{ matrix.arch }}'}
       - name: Install the released v5 and v6 compilers
         run: |
           npm install --global @lmctl-ai/lmctl@0.2.426
@@ -69,12 +69,13 @@ jobs:
       - name: Execute released examples and real loopback traffic
         env:
           GH_TOKEN: ${{ github.token }}
+          EXPECTED_PLATFORM: ${{ matrix.name }}
           LMDEBUG_TAG: ${{ inputs.lmdebug_tag }}
           EXAMPLES_REF: ${{ inputs.examples_ref }}
           # Pktmon only supports removing all filters; this is a fresh hosted VM.
           LMDEBUG_PKTMON_EXCLUSIVE: '1'
         run: |
-          python scripts/integration-run.py --lmdebug-tag "$LMDEBUG_TAG" --examples-ref "$EXAMPLES_REF" \
+          python scripts/integration-run.py --expected-platform "$EXPECTED_PLATFORM" --lmdebug-tag "$LMDEBUG_TAG" --examples-ref "$EXAMPLES_REF" \
             --mock-compiler "$MOCK_COMPILER" --sudo-capture \
             --report out/integration-report.json --summary "$GITHUB_STEP_SUMMARY"
       - name: Reports and generated witnesses

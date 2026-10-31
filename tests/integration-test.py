@@ -83,6 +83,16 @@ class IntegrationContracts(unittest.TestCase):
             report=json.loads((root/'report.json').read_text())
             self.assertEqual(report['status'],'BLOCKED')
             self.assertEqual(report['counts'],{'PASS':0,'FAIL':0,'BLOCKED':2})
+    def test_wrong_native_architecture_fails_before_installation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory)
+            argv=['integration-run.py','--mock-compiler','unused','--expected-platform','linux-arm64',
+                  '--work',str(root/'work'),'--report',str(root/'report.json')]
+            with patch('sys.argv',argv), patch.object(integration.hosts,'native_platform',return_value='linux-x64'), \
+                 patch.object(integration.hosts,'install') as install, contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(integration.main(),1)
+                install.assert_not_called()
+            self.assertIn('native runner mismatch',json.loads((root/'report.json').read_text())['reason'])
     def test_failed_pktmon_start_does_not_stop_a_foreign_session(self):
         with tempfile.TemporaryDirectory() as directory:
             capture=traffic.WindowsCapture('pktmon',Path(directory),34567)

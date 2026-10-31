@@ -94,6 +94,7 @@ def execute_example(example, stage, compiler, binaries, env, timeout):
 
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--expected-platform', choices=('linux-x64','linux-arm64','macos-x64','macos-arm64','windows-x64'))
     parser.add_argument('--lmdebug-tag', default='v0.1.36')
     parser.add_argument('--examples-ref', default='v0.1.36')
     parser.add_argument('--compiler', type=Path, default=Path(shutil.which('lmscript') or 'lmscript'), help='released lmdebug v5 compiler (0.2.426)')
@@ -107,10 +108,12 @@ def main():
     parser.add_argument('--skip-traffic', action='store_true', help='development only; reports BLOCKED, never a green complete run')
     args=parser.parse_args()
     target=hosts.native_platform(); work=args.work.resolve(); report_path=args.report.resolve()
-    report={'status':'FAIL','platform':target,'examples':[],'tools':{},'traffic':{'status':'NOT_RUN'}}
+    report={'status':'FAIL','platform':target,'expected_platform':args.expected_platform,'examples':[],'tools':{},'traffic':{'status':'NOT_RUN'}}
     code=1
     try:
         work.mkdir(parents=True, exist_ok=False)
+        if args.expected_platform and args.expected_platform != target:
+            raise ValueError('native runner mismatch: expected '+args.expected_platform+', actual '+target)
         compiler=args.compiler.resolve(strict=True); mock_compiler=args.mock_compiler.resolve(strict=True)
         env=dict(os.environ, LMSCRIPT_TOOL_CACHE=str(work/'cache'))
         report['compiler']=run([compiler,'--version'], ROOT, env).strip()
