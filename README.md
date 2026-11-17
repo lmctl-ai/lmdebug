@@ -216,6 +216,35 @@ See [`docs/cli-and-dsl.md`](docs/cli-and-dsl.md) for the complete CLI and DSL re
 
 The full list of signatures: `lmdebug --lmcode-signatures` (and `lmdebug pcap --lmcode-signatures`); the schema: `lmdebug --lmcode-schema --json` (and `lmdebug pcap --lmcode-schema --json`).
 
+## Standard `lmcode` REST Endpoints and Stateless CLI
+
+With `lmcode_std_v3` (226 standard signatures in `@lmctl-ai/lmctl@0.2.482`; see [`durable-memory/01-std-rest-and-cli-interfaces.md`](durable-memory/01-std-rest-and-cli-interfaces.md)), `_lmcode_` blocks can also declare REST endpoints (`RestGet`, `RestPost`, `RestPut`, `RestDelete`, `RestPatch`, `RestHead`, `RestOptions`, `RestHandler`) and stateless CLI commands/options (`CliCommand`, `CliOption`) with `@"..."` annotations and dispatch them via `rest_serve()` or `rest_cli(args)`:
+
+```lms
+p = _lmcode_ cli="lmdebug" install="github:lmctl-ai/lmdebug@latest";
+  @"--host"
+  fn opt_host(x: RestExchange) -> void implements CliOption {
+    x.set("host", x.query("host"));
+  }
+
+  @"resolve"
+  fn cmd_resolve(x: RestExchange) -> void implements CliCommand {
+    let addrs = net.dns_lookup(x.get("host"));
+    x.send(x.get("host") + ":" + str(addrs.len()));
+  }
+
+  @"/sockets/listening"
+  fn get_listening(x: RestExchange) -> void implements RestGet {
+    let s = net.socket_summary("tcp");
+    x.json("{\"listening\":" + str(s.listening()) + "}");
+  }
+
+  rest_config("session", "global");
+  $return.cli_out = rest_cli(str_split("--host=localhost resolve", " "));
+  $return.get_out = rest_cli(str_split("/sockets/listening", " "));
+end _lmcode_
+```
+
 ## Honest limits
 
 - Active raw-socket probes (`trace`, `tracepath`, `mtr`, `arping`, and `shark.live`) require root or `CAP_NET_RAW`; `link set` requires `CAP_NET_ADMIN`. Without those privileges, DSL methods return structured error strings in `.error()` rather than aborting the VM.

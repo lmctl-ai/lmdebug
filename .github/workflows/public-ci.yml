@@ -18,7 +18,11 @@ jobs:
           node-version: 24
 
       - name: Install the compiler that accepts _lmcode_
-        run: npm install --global @lmctl-ai/lmctl@0.2.420
+        run: npm install --global @lmctl-ai/lmctl@0.2.482
+
+      - name: Local runner and std REST/CLI contracts
+        shell: bash
+        run: bash test.sh
 
       - name: Install released hosts referenced by public examples
         env:
