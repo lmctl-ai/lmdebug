@@ -4,6 +4,8 @@
 
 **Linux network, system, process, packet-capture, and detection introspection in one self-contained executable, scripted from lmscript: structured JSON on the CLI, typed contexts (`net`, `sys`, `proc`, `detect`, `shark`) in the DSL, and an audited dry-run-by-default mutation framework.**
 
+**Documentation:** [Quick reference](https://www.lmctl.com/tools/lmdebug/) · [LLM skill](https://www.lmctl.com/tools/lmdebug/skill.html) · [Guide](https://www.lmctl.com/tools/lmdebug/guide.html) · [Reference](https://www.lmctl.com/tools/lmdebug/reference.html)
+
 [![CI](https://github.com/lmctl-ai/lmdebug/actions/workflows/public-ci.yml/badge.svg)](https://github.com/lmctl-ai/lmdebug/actions/workflows/public-ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/lmctl-ai/lmdebug?label=release)](https://github.com/lmctl-ai/lmdebug/releases)
 [![Examples: MIT](https://img.shields.io/badge/examples-MIT-blue.svg)](LICENSE-examples)
